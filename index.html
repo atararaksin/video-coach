@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Frame Analyzer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Video Frame Analyzer</h1>
+            <p>Select a video file to play and analyze frames</p>
+        </header>
+
+        <main>
+            <!-- File Selection Section -->
+            <section class="file-section">
+                <div class="file-inputs">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="videoFile" accept="video/mp4,video/*" class="file-input">
+                        <label for="videoFile" class="file-label">
+                            <span class="file-icon">🎥</span>
+                            Choose Video File
+                        </label>
+                    </div>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="csvFile" accept=".csv" class="file-input">
+                        <label for="csvFile" class="file-label csv-label">
+                            <span class="file-icon">📊</span>
+                            Choose CSV Data Log
+                        </label>
+                    </div>
+                </div>
+                <div class="file-info" id="fileInfo"></div>
+                <div class="csv-info" id="csvInfo" style="display: none;"></div>
+                
+                <!-- Lap Selection Table -->
+                <div class="lap-selection" id="lapSelection" style="display: none;">
+                    <h3>Select Lap for Synchronization</h3>
+                    <p>Choose which lap the selected video frame corresponds to:</p>
+                    <div class="lap-table-container">
+                        <table class="lap-table" id="lapTable">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Lap #</th>
+                                    <th>Lap Time</th>
+                                    <th>Start Time</th>
+                                    <th>Jump to Start</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lapTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Video Player Section -->
+            <section class="video-section" id="videoSection" style="display: none;">
+                <div class="video-container">
+                    <video id="videoPlayer" controls preload="metadata">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+
+                <!-- Video Controls and Info -->
+                <div class="video-controls">
+                    <div class="video-info">
+                        <span id="currentTime">00:00</span>
+                        <span class="separator">/</span>
+                        <span id="duration">00:00</span>
+                        <span class="frame-info">
+                            Frame: <span id="currentFrame">0</span>
+                        </span>
+                        <div class="telemetry-display" id="telemetryDisplay" style="display: none;">
+                            <div class="telemetry-item speed-display">
+                                <span class="telemetry-label">GPS Speed</span>
+                                <span class="telemetry-value" id="speedValue">0</span>
+                                <span class="telemetry-unit">km/h</span>
+                            </div>
+                            <div class="telemetry-item latacc-display">
+                                <span class="telemetry-label">Lat Acc</span>
+                                <span class="telemetry-value" id="latAccValue">0.0</span>
+                                <span class="telemetry-unit">g</span>
+                            </div>
+                            <div class="telemetry-item lonacc-display">
+                                <span class="telemetry-label">Lon Acc</span>
+                                <span class="telemetry-value" id="lonAccValue">0.0</span>
+                                <span class="telemetry-unit">g</span>
+                            </div>
+                            <div class="telemetry-item altitude-display">
+                                <span class="telemetry-label">Altitude</span>
+                                <span class="telemetry-value" id="altitudeValue">0</span>
+                                <span class="telemetry-unit">m</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="frame-controls">
+                        <button id="prevFrame" class="frame-btn" title="Previous Frame">⏮</button>
+                        <button id="nextFrame" class="frame-btn" title="Next Frame">⏭</button>
+                        <button id="selectFrame" class="select-frame-btn">Select Current Frame</button>
+                    </div>
+                </div>
+
+                <!-- Selected Frame Info -->
+                <div class="selected-frame-info" id="selectedFrameInfo" style="display: none;">
+                    <h3>Selected Frame Information</h3>
+                    <div class="frame-details">
+                        <p>Frame Number: <span id="selectedFrameNumber">-</span></p>
+                        <p>Timestamp: <span id="selectedFrameTime">-</span></p>
+                        <p id="syncInfo" style="display: none;">Sync Point: <span id="syncDetails">-</span></p>
+                        <div id="syncInstructions" style="display: none;">
+                            <p><strong>Next Step:</strong> Select a lap from the table above to complete synchronization.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
