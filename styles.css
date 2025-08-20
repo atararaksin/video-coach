@@ -13,7 +13,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -118,12 +118,30 @@ header p {
     box-shadow: 0 5px 15px rgba(82, 196, 26, 0.4);
 }
 
-.lap-selection {
+/* Main content area with side-by-side layout */
+.main-content-area {
+    display: flex;
+    gap: 20px;
     margin-top: 20px;
+    min-height: 600px;
+}
+
+.left-panel {
+    flex: 1;
+    min-width: 0;
+}
+
+.right-panel {
+    flex: 1;
+    min-width: 0;
+}
+
+.lap-selection {
     padding: 20px;
     background: #f0f8ff;
     border: 1px solid #91d5ff;
     border-radius: 10px;
+    height: fit-content;
 }
 
 .lap-selection h3 {
@@ -239,6 +257,30 @@ header p {
 
 .sector-time:hover {
     background: #e6f7ff;
+}
+
+/* Best time highlighting */
+.best-sector-time {
+    background: #f9f0ff !important;
+    border: 2px solid #722ed1 !important;
+    color: #722ed1 !important;
+    font-weight: 700 !important;
+}
+
+.best-lap-time {
+    background: #f9f0ff !important;
+    border: 2px solid #722ed1 !important;
+    color: #722ed1 !important;
+    font-weight: 700 !important;
+}
+
+.best-lap-row {
+    background: #f9f0ff !important;
+}
+
+.best-lap-row .lap-number {
+    color: #722ed1 !important;
+    font-weight: 700 !important;
 }
 
 /* Video Section */
@@ -397,38 +439,6 @@ header p {
     transform: translateY(-1px);
 }
 
-/* Selected Frame Info */
-.selected-frame-info {
-    background: #e6fffa;
-    border: 2px solid #48bb78;
-    border-radius: 10px;
-    padding: 20px;
-    margin-top: 20px;
-}
-
-.selected-frame-info h3 {
-    color: #2d3748;
-    margin-bottom: 15px;
-    font-size: 1.2rem;
-}
-
-.frame-details {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-}
-
-.frame-details p {
-    background: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    border-left: 4px solid #48bb78;
-}
-
-.frame-details span {
-    font-weight: 600;
-    color: #2d3748;
-}
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -448,6 +458,12 @@ header p {
     .file-inputs {
         flex-direction: column;
         align-items: center;
+    }
+    
+    /* Stack panels vertically on mobile */
+    .main-content-area {
+        flex-direction: column;
+        gap: 15px;
     }
     
     .video-controls {

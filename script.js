@@ -27,6 +27,7 @@ class VideoFrameAnalyzer {
         // Video elements
         this.videoSection = document.getElementById('videoSection');
         this.video = document.getElementById('videoPlayer');
+        this.mainContentArea = document.getElementById('mainContentArea');
         
         // Control elements
         this.currentTimeSpan = document.getElementById('currentTime');
@@ -34,15 +35,7 @@ class VideoFrameAnalyzer {
         this.currentFrameSpan = document.getElementById('currentFrame');
         this.prevFrameBtn = document.getElementById('prevFrame');
         this.nextFrameBtn = document.getElementById('nextFrame');
-        this.selectFrameBtn = document.getElementById('selectFrame');
         
-        // Selected frame info elements
-        this.selectedFrameInfo = document.getElementById('selectedFrameInfo');
-        this.selectedFrameNumber = document.getElementById('selectedFrameNumber');
-        this.selectedFrameTime = document.getElementById('selectedFrameTime');
-        this.syncInfo = document.getElementById('syncInfo');
-        this.syncDetails = document.getElementById('syncDetails');
-        this.syncInstructions = document.getElementById('syncInstructions');
         
         // Lap selection elements
         this.lapSelection = document.getElementById('lapSelection');
@@ -60,7 +53,6 @@ class VideoFrameAnalyzer {
         this.gpsSection = document.getElementById('gpsSection');
         this.gpsCanvas = document.getElementById('gpsCanvas');
         this.gpsCtx = this.gpsCanvas.getContext('2d');
-        this.toggleGpsBtn = document.getElementById('toggleGpsView');
         this.gpsVisible = false;
     }
 
@@ -77,14 +69,9 @@ class VideoFrameAnalyzer {
         // Frame control events
         this.prevFrameBtn.addEventListener('click', () => this.previousFrame());
         this.nextFrameBtn.addEventListener('click', () => this.nextFrame());
-        this.selectFrameBtn.addEventListener('click', () => this.selectCurrentFrame());
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
-        
-        // GPS visualization events
-        this.toggleGpsBtn.addEventListener('click', () => this.toggleGpsVisualization());
-        
     }
 
     handleFileSelect(event) {
@@ -120,6 +107,9 @@ class VideoFrameAnalyzer {
             }
             this.previousVideoURL = videoURL;
         });
+
+        // Check if we should show the main content area
+        this.checkAndShowMainContent();
     }
 
     handleVideoLoaded() {
@@ -129,7 +119,6 @@ class VideoFrameAnalyzer {
         
         // Reset selected frame info
         this.selectedFrame = null;
-        this.hideSelectedFrameInfo();
     }
 
     handleTimeUpdate() {
@@ -191,38 +180,7 @@ class VideoFrameAnalyzer {
             this.video.currentTime = newTime;
         }
     }
-
-    selectCurrentFrame() {
-        if (this.video.duration) {
-            this.selectedFrame = {
-                frameNumber: this.currentFrameNumber,
-                timestamp: this.video.currentTime,
-                formattedTime: this.formatTime(this.video.currentTime)
-            };
-            
-            this.showSelectedFrameInfo();
-            this.updateSelectedFrameDisplay();
-            
-            // If we have CSV data, show lap selection table
-            if (this.csvData && this.lapTimes.length > 0) {
-                this.showLapSelection();
-                this.syncInstructions.style.display = 'block';
-            }
-            
-            // Visual feedback
-            this.selectFrameBtn.style.background = '#38a169';
-            setTimeout(() => {
-                this.selectFrameBtn.style.background = '#48bb78';
-            }, 200);
-        }
-    }
-
-    updateSelectedFrameDisplay() {
-        if (this.selectedFrame) {
-            this.selectedFrameNumber.textContent = this.selectedFrame.frameNumber;
-            this.selectedFrameTime.textContent = this.selectedFrame.formattedTime;
-        }
-    }
+    
 
     handleKeyboard(event) {
         // Only handle keyboard shortcuts when video is loaded
@@ -245,10 +203,6 @@ class VideoFrameAnalyzer {
                     this.video.pause();
                 }
                 break;
-            case 'Enter':
-                event.preventDefault();
-                this.selectCurrentFrame();
-                break;
         }
     }
 
@@ -259,17 +213,8 @@ class VideoFrameAnalyzer {
 
     hideVideoSection() {
         this.videoSection.style.display = 'none';
-        this.hideSelectedFrameInfo();
     }
 
-    showSelectedFrameInfo() {
-        this.selectedFrameInfo.style.display = 'block';
-        this.selectedFrameInfo.classList.add('fade-in');
-    }
-
-    hideSelectedFrameInfo() {
-        this.selectedFrameInfo.style.display = 'none';
-    }
 
     showFileInfo(message, type = 'info') {
         this.fileInfo.innerHTML = message;
@@ -336,8 +281,16 @@ class VideoFrameAnalyzer {
                     <strong>Duration:</strong> ${this.formatTime(this.telemetryData[this.telemetryData.length - 1]?.time || 0)}
                 `);
                 
-                // Show GPS visualization button if GPS data is available
-                this.showGpsButtonIfAvailable();
+                // Show lap table immediately after CSV is loaded
+                if (this.lapTimes.length > 0) {
+                    this.renderLapDataTable();
+                }
+                
+                // Show GPS visualization if GPS data is available
+                this.showGpsVisualizationIfAvailable();
+                
+                // Check if we should show the main content area
+                this.checkAndShowMainContent();
             } catch (error) {
                 console.error('Error parsing CSV:', error);
                 this.showCsvInfo('Error parsing CSV file. Please check the format.', 'error');
@@ -475,7 +428,7 @@ class VideoFrameAnalyzer {
     }
 
     updateTelemetryDisplay() {
-        if (!this.telemetryData.length || !this.selectedFrame || this.syncOffset === 0) {
+        if (!this.telemetryData.length || this.syncOffset === 0) {
             return;
         }
         
@@ -525,25 +478,50 @@ class VideoFrameAnalyzer {
         console.log('Calculated lap start times:', this.lapStartTimes);
     }
 
-    showLapSelection() {
+    renderLapDataTable() {
         if (!this.lapTimes.length) return;
         
         // Clear existing table rows
         this.lapTableBody.innerHTML = '';
         
+        // Check if we have sector times to display
+        const hasSectorTimes = this.lapSectorTimes.length > 0;
+        const numSectors = hasSectorTimes ? (this.lapSectorTimes[0] ? this.lapSectorTimes[0].length : 0) : 0;
+        
+        console.log(`renderLapDataTable: hasSectorTimes=${hasSectorTimes}, numSectors=${numSectors}`);
+        
+        // Find best sector times and best lap for purple highlighting
+        const bestSectorTimes = hasSectorTimes && numSectors > 0 ? this.findBestSectorTimes(numSectors) : [];
+        const bestLapIndex = this.findBestLapIndex();
+        
+        console.log('Best sector times for purple highlighting:', bestSectorTimes);
+        console.log('Best lap index for purple highlighting:', bestLapIndex);
+        
+        // Update table header if we have sector times
+        if (hasSectorTimes && numSectors > 0) {
+            const headerRow = this.lapTable.querySelector('thead tr');
+            if (headerRow) {
+                // Remove existing sector headers
+                const existingSectorHeaders = headerRow.querySelectorAll('.sector-header');
+                existingSectorHeaders.forEach(header => header.remove());
+                
+                // Find the "Sync Video" column and insert sector headers before it
+                const syncHeader = headerRow.querySelector('th:last-child');
+                
+                for (let i = 0; i < numSectors; i++) {
+                    const sectorHeader = document.createElement('th');
+                    sectorHeader.className = 'sector-header';
+                    sectorHeader.textContent = `S${i + 1}`;
+                    sectorHeader.style.backgroundColor = '#f0f0f0';
+                    sectorHeader.style.border = '1px solid #ccc';
+                    headerRow.insertBefore(sectorHeader, syncHeader);
+                }
+            }
+        }
+        
         // Create table rows for each lap
         for (let i = 0; i < this.lapTimes.length; i++) {
             const row = document.createElement('tr');
-            
-            // Radio button cell
-            const radioCell = document.createElement('td');
-            const radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = 'lapSelection';
-            radio.value = i;
-            radio.className = 'lap-radio';
-            radio.addEventListener('change', () => this.handleLapSelection(i));
-            radioCell.appendChild(radio);
             
             // Lap number cell
             const lapCell = document.createElement('td');
@@ -555,27 +533,142 @@ class VideoFrameAnalyzer {
             timeCell.className = 'lap-time';
             timeCell.textContent = this.formatTime(this.lapTimes[i]);
             
-            // Jump button cell
-            const jumpCell = document.createElement('td');
-            const jumpBtn = document.createElement('button');
-            jumpBtn.className = 'jump-btn';
-            jumpBtn.textContent = 'Jump to Start';
-            jumpBtn.addEventListener('click', () => this.jumpToLapStart(i));
-            jumpCell.appendChild(jumpBtn);
+            // Highlight best lap time in purple
+            if (i === bestLapIndex) {
+                timeCell.style.backgroundColor = '#722ed1';
+                timeCell.style.color = 'white';
+                timeCell.style.fontWeight = 'bold';
+                console.log(`Highlighted lap ${i} as best lap time in purple`);
+            }
             
-            row.appendChild(radioCell);
+            // Actions cell with sync and jump buttons
+            const actionsCell = document.createElement('td');
+            actionsCell.style.display = 'flex';
+            actionsCell.style.gap = '4px';
+            actionsCell.style.justifyContent = 'center';
+            actionsCell.style.alignItems = 'center';
+            
+            // Sync button (establish synchronization)
+            const syncBtn = document.createElement('button');
+            syncBtn.className = 'action-btn sync-btn';
+            syncBtn.innerHTML = '🔗'; // Link icon for sync
+            syncBtn.title = 'Sync: Set current video time as lap start';
+            syncBtn.style.fontSize = '14px';
+            syncBtn.style.padding = '4px 6px';
+            syncBtn.style.border = '1px solid #d9d9d9';
+            syncBtn.style.borderRadius = '4px';
+            syncBtn.style.backgroundColor = '#fff';
+            syncBtn.style.cursor = 'pointer';
+            syncBtn.addEventListener('click', () => this.syncVideoToLapStart(i));
+            
+            // Jump button (navigate to lap start)
+            const jumpBtn = document.createElement('button');
+            jumpBtn.className = 'action-btn jump-btn';
+            jumpBtn.innerHTML = '⏭️'; // Skip forward icon for jump
+            jumpBtn.title = 'Jump: Go to lap start time';
+            jumpBtn.style.fontSize = '14px';
+            jumpBtn.style.padding = '4px 6px';
+            jumpBtn.style.border = '1px solid #d9d9d9';
+            jumpBtn.style.borderRadius = '4px';
+            jumpBtn.style.backgroundColor = '#fff';
+            jumpBtn.style.cursor = 'pointer';
+            jumpBtn.addEventListener('click', () => this.jumpToLapStart(i));
+            
+            actionsCell.appendChild(syncBtn);
+            actionsCell.appendChild(jumpBtn);
+            
+            // Append cells in correct order: Lap, Time, [Sectors], Sync
             row.appendChild(lapCell);
             row.appendChild(timeCell);
-            row.appendChild(jumpCell);
+            
+            // Add sector time cells if we have sector data
+            if (hasSectorTimes && numSectors > 0) {
+                const sectorTimes = this.lapSectorTimes[i] || [];
+                console.log(`Lap ${i} sector times:`, sectorTimes);
+                
+                for (let j = 0; j < numSectors; j++) {
+                    const sectorCell = document.createElement('td');
+                    sectorCell.className = 'sector-time';
+                    sectorCell.style.border = '1px solid #ccc';
+                    sectorCell.style.padding = '4px';
+                    sectorCell.style.textAlign = 'center';
+                    
+                    if (j < sectorTimes.length && sectorTimes[j] !== undefined && sectorTimes[j] !== null) {
+                        sectorCell.textContent = this.formatSectorTime(sectorTimes[j]);
+                        sectorCell.style.backgroundColor = '#e6f7ff';
+                        
+                        // Highlight best sector time in purple
+                        if (bestSectorTimes[j] !== undefined && 
+                            Math.abs(sectorTimes[j] - bestSectorTimes[j]) < 0.001) { // Use small tolerance for floating point comparison
+                            sectorCell.style.backgroundColor = '#722ed1';
+                            sectorCell.style.color = 'white';
+                            sectorCell.style.fontWeight = 'bold';
+                            console.log(`Highlighted sector ${j + 1} for lap ${i} as best sector time in purple`);
+                        }
+                        
+                        console.log(`Sector ${j + 1} for lap ${i}: ${this.formatSectorTime(sectorTimes[j])}`);
+                    } else {
+                        sectorCell.textContent = '--';
+                        sectorCell.style.backgroundColor = '#f5f5f5';
+                        console.log(`Sector ${j + 1} for lap ${i}: no data`);
+                    }
+                    
+                    row.appendChild(sectorCell);
+                }
+            }
+            
+            // Add actions cell as the last column
+            row.appendChild(actionsCell);
             
             this.lapTableBody.appendChild(row);
         }
         
         this.lapSelection.style.display = 'block';
+        
+        console.log(`renderLapDataTable: Created table with ${this.lapTimes.length} laps and ${numSectors} sector columns`);
     }
 
-    handleLapSelection(lapIndex) {
-        this.selectedLapIndex = lapIndex;
+    syncVideoToLapStart(lapIndex) {
+        if (!this.video.duration || !this.lapStartTimes.length) {
+            alert('Please load a video file first to sync with the lap data.');
+            return;
+        }
+        
+        const lapStartTime = this.lapStartTimes[lapIndex];
+        
+        // If we already have a sync offset, jump to the corresponding video time
+        if (this.syncOffset !== 0) {
+            // Calculate the video time that corresponds to this lap start
+            const targetVideoTime = lapStartTime + this.syncOffset;
+            
+            // Clamp to video bounds
+            const clampedTime = Math.max(0, Math.min(this.video.duration, targetVideoTime));
+            
+            // Jump video to the lap start time
+            this.video.currentTime = clampedTime;
+            
+            console.log(`Jumped to ${lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`} start: video time ${this.formatTime(clampedTime)}`);
+        } else {
+            // No sync established yet - use current video time to establish sync
+            const currentVideoTime = this.video.currentTime;
+            
+            // Calculate sync offset: video time - data time
+            this.syncOffset = currentVideoTime - lapStartTime;
+            this.selectedLapIndex = lapIndex;
+            
+            // Create a selected frame object for compatibility with existing sync display
+            this.selectedFrame = {
+                frameNumber: this.currentFrameNumber,
+                timestamp: currentVideoTime,
+                formattedTime: this.formatTime(currentVideoTime)
+            };
+            
+            const lapName = lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`;
+            console.log(`Synced to ${lapName}: Video ${currentVideoTime}s = Data ${lapStartTime}s (offset: ${this.syncOffset}s)`);
+        }
+        
+        // Show telemetry display now that we're synced (moved outside the if/else)
+        this.telemetryDisplay.style.display = 'block';
         
         // Update table row selection visual
         const rows = this.lapTableBody.querySelectorAll('tr');
@@ -587,60 +680,71 @@ class VideoFrameAnalyzer {
             }
         });
         
-        // Calculate sync offset
-        const lapStartTime = this.lapStartTimes[lapIndex];
-        this.syncOffset = this.selectedFrame.timestamp - lapStartTime;
+        // Visual feedback on the sync button
+        const syncBtn = event.target;
+        const originalText = syncBtn.textContent;
+        const originalColor = syncBtn.style.backgroundColor;
         
-        // Update sync info
-        const lapName = lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`;
-        this.syncDetails.textContent = `Video time ${this.selectedFrame.formattedTime} = ${lapName} start (${this.formatTime(lapStartTime)} in data)`;
-        this.syncInfo.style.display = 'block';
-        this.syncInstructions.style.display = 'none';
+        if (this.syncOffset !== 0) {
+            syncBtn.textContent = 'Jumped!';
+            syncBtn.style.backgroundColor = '#1890ff';
+        } else {
+            syncBtn.textContent = 'Synced!';
+            syncBtn.style.backgroundColor = '#52c41a';
+        }
         
-        // Show telemetry display now that we're synced
-        this.telemetryDisplay.style.display = 'block';
-        
-        console.log(`Synced to ${lapName}: Video ${this.selectedFrame.timestamp}s = Data ${lapStartTime}s (offset: ${this.syncOffset}s)`);
+        setTimeout(() => {
+            syncBtn.textContent = originalText;
+            syncBtn.style.backgroundColor = originalColor;
+        }, 2000);
     }
 
     jumpToLapStart(lapIndex) {
-        if (!this.video.duration || !this.lapStartTimes.length) return;
-        
-        // Calculate the video time for the lap start
-        const lapStartTime = this.lapStartTimes[lapIndex];
-        let videoTime;
-        
-        if (this.syncOffset !== 0) {
-            // If we have a sync offset, use it to calculate video time
-            videoTime = lapStartTime + this.syncOffset;
-        } else {
-            // If no sync is established, assume direct mapping
-            videoTime = lapStartTime;
+        if (!this.video.duration || !this.lapStartTimes.length) {
+            alert('Please load a video file first to jump to lap data.');
+            return;
         }
         
-        // Ensure the time is within video bounds
-        videoTime = Math.max(0, Math.min(videoTime, this.video.duration));
+        if (this.syncOffset === 0) {
+            alert('Please establish synchronization first by clicking the sync button (🔗) next to any lap.');
+            return;
+        }
         
-        // Jump to the calculated time
-        this.video.currentTime = videoTime;
+        const lapStartTime = this.lapStartTimes[lapIndex];
         
-        // Pause the video to allow precise positioning
-        this.video.pause();
+        // Calculate the video time that corresponds to this lap start
+        const targetVideoTime = lapStartTime + this.syncOffset;
         
-        // Visual feedback
+        // Clamp to video bounds
+        const clampedTime = Math.max(0, Math.min(this.video.duration, targetVideoTime));
+        
+        // Jump video to the lap start time
+        this.video.currentTime = clampedTime;
+        
+        // Update table row selection visual
+        const rows = this.lapTableBody.querySelectorAll('tr');
+        rows.forEach((row, index) => {
+            if (index === lapIndex) {
+                row.classList.add('selected');
+            } else {
+                row.classList.remove('selected');
+            }
+        });
+        
+        // Visual feedback on the jump button
         const jumpBtn = event.target;
-        const originalText = jumpBtn.textContent;
-        jumpBtn.textContent = 'Jumped!';
-        jumpBtn.style.background = '#52c41a';
+        const originalText = jumpBtn.innerHTML;
+        const originalColor = jumpBtn.style.backgroundColor;
+        
+        jumpBtn.innerHTML = '✓';
+        jumpBtn.style.backgroundColor = '#1890ff';
         
         setTimeout(() => {
-            jumpBtn.textContent = originalText;
-            jumpBtn.style.background = '#1890ff';
+            jumpBtn.innerHTML = originalText;
+            jumpBtn.style.backgroundColor = originalColor;
         }, 1000);
         
-        // Log for debugging
-        const lapName = lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`;
-        console.log(`Jumped to ${lapName} start: Video time ${this.formatTime(videoTime)} (Data time: ${this.formatTime(lapStartTime)})`);
+        console.log(`Jumped to ${lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`} start: video time ${this.formatTime(clampedTime)}`);
     }
 
     generateSectorSplits() {
@@ -712,88 +816,8 @@ class VideoFrameAnalyzer {
         this.calculateAllLapSectorTimes();
         console.log('Calculated sector times for all laps:', this.lapSectorTimes);
         
-        // Update the lap table to show sector times - FORCE UPDATE
-        this.forceUpdateLapTableWithSectors();
-    }
-    forceUpdateLapTableWithSectors() {
-        console.log('FORCE UPDATE: Starting lap table update with sectors');
-        
-        if (!this.lapSectorTimes.length) {
-            console.log('FORCE UPDATE: No sector times available to display');
-            return;
-        }
-        
-        // Determine number of sectors (use first lap's sector count)
-        const numSectors = this.lapSectorTimes[0] ? this.lapSectorTimes[0].length : 3;
-        console.log(`FORCE UPDATE: Updating table with ${numSectors} sectors for ${this.lapSectorTimes.length} laps`);
-        
-        // Get the table elements
-        const headerRow = this.lapTable.querySelector('thead tr');
-        const bodyRows = this.lapTableBody.querySelectorAll('tr');
-        
-        console.log(`FORCE UPDATE: Found header row: ${!!headerRow}, body rows: ${bodyRows.length}`);
-        
-        if (!headerRow) {
-            console.error('FORCE UPDATE: No header row found!');
-            return;
-        }
-        
-        // Remove ALL existing sector headers and cells first
-        const existingSectorHeaders = headerRow.querySelectorAll('.sector-header');
-        console.log(`FORCE UPDATE: Removing ${existingSectorHeaders.length} existing sector headers`);
-        existingSectorHeaders.forEach(header => header.remove());
-        
-        bodyRows.forEach((row, index) => {
-            const existingSectorCells = row.querySelectorAll('.sector-time');
-            console.log(`FORCE UPDATE: Removing ${existingSectorCells.length} existing sector cells from row ${index}`);
-            existingSectorCells.forEach(cell => cell.remove());
-        });
-        
-        // Add sector headers - insert before the last column (Jump to Start)
-        const allHeaders = headerRow.querySelectorAll('th');
-        const lastHeader = allHeaders[allHeaders.length - 1];
-        console.log(`FORCE UPDATE: Inserting ${numSectors} sector headers before last header: ${lastHeader.textContent}`);
-        
-        for (let i = 0; i < numSectors; i++) {
-            const sectorHeader = document.createElement('th');
-            sectorHeader.className = 'sector-header';
-            sectorHeader.textContent = `S${i + 1}`;
-            sectorHeader.style.backgroundColor = '#f0f0f0';
-            sectorHeader.style.border = '1px solid #ccc';
-            headerRow.insertBefore(sectorHeader, lastHeader);
-            console.log(`FORCE UPDATE: Added sector header S${i + 1}`);
-        }
-        
-        // Add sector cells to each row
-        bodyRows.forEach((row, lapIndex) => {
-            const allCells = row.querySelectorAll('td');
-            const lastCell = allCells[allCells.length - 1];
-            const sectorTimes = this.lapSectorTimes[lapIndex] || [];
-            
-            console.log(`FORCE UPDATE: Adding ${numSectors} sector cells to lap ${lapIndex}, sector times:`, sectorTimes);
-            
-            for (let i = 0; i < numSectors; i++) {
-                const sectorCell = document.createElement('td');
-                sectorCell.className = 'sector-time';
-                sectorCell.style.border = '1px solid #ccc';
-                sectorCell.style.padding = '4px';
-                sectorCell.style.textAlign = 'center';
-                
-                if (i < sectorTimes.length && sectorTimes[i] !== undefined && sectorTimes[i] !== null) {
-                    sectorCell.textContent = this.formatSectorTime(sectorTimes[i]);
-                    sectorCell.style.backgroundColor = '#e6f7ff';
-                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: ${this.formatSectorTime(sectorTimes[i])}`);
-                } else {
-                    sectorCell.textContent = '--';
-                    sectorCell.style.backgroundColor = '#f5f5f5';
-                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: no data`);
-                }
-                
-                row.insertBefore(sectorCell, lastCell);
-            }
-        });
-        
-        console.log(`FORCE UPDATE: Successfully updated lap table with ${numSectors} sector columns`);
+        // Re-render the lap table to include sector times
+        this.renderLapDataTable();
     }
 
 
@@ -1592,21 +1616,86 @@ class VideoFrameAnalyzer {
     }
 
 
-    showGpsButtonIfAvailable() {
+    showGpsVisualizationIfAvailable() {
         // Check if we have GPS data
         const hasGpsData = this.telemetryData.some(point => point.lat !== 0 && point.lon !== 0);
         
         if (hasGpsData) {
-            // Show the GPS section and button
+            // Always show GPS section and render visualization immediately
             this.gpsSection.style.display = 'block';
-            this.toggleGpsBtn.textContent = 'Show GPS Track';
-            this.gpsVisible = false;
-            console.log('GPS data detected - GPS visualization available');
+            this.gpsVisible = true;
+            this.renderGpsVisualization();
+            console.log('GPS data detected - GPS visualization displayed');
         } else {
             // Hide GPS section if no GPS data
             this.gpsSection.style.display = 'none';
             console.log('No GPS data found - GPS visualization not available');
         }
+    }
+
+    checkAndShowMainContent() {
+        // Show main content area when both CSV and video are loaded
+        const hasVideo = this.video && this.video.src;
+        const hasCsvData = this.telemetryData && this.telemetryData.length > 0;
+        
+        if (hasVideo && hasCsvData) {
+            this.mainContentArea.style.display = 'flex';
+            console.log('Both video and CSV loaded - showing main content area');
+        } else {
+            console.log(`Main content not ready - Video: ${!!hasVideo}, CSV: ${!!hasCsvData}`);
+        }
+    }
+
+    findBestSectorTimes(numSectors) {
+        const bestSectorTimes = [];
+        
+        console.log('DEBUG: Finding best sector times for', numSectors, 'sectors');
+        console.log('DEBUG: Lap sector times:', this.lapSectorTimes);
+        
+        for (let sectorIndex = 0; sectorIndex < numSectors; sectorIndex++) {
+            let bestTime = Infinity;
+            
+            for (let lapIndex = 0; lapIndex < this.lapSectorTimes.length; lapIndex++) {
+                const sectorTimes = this.lapSectorTimes[lapIndex];
+                
+                if (sectorTimes && sectorIndex < sectorTimes.length) {
+                    const sectorTime = sectorTimes[sectorIndex];
+                    
+                    if (sectorTime !== undefined && sectorTime !== null && sectorTime < bestTime) {
+                        bestTime = sectorTime;
+                    }
+                }
+            }
+            
+            bestSectorTimes[sectorIndex] = bestTime === Infinity ? undefined : bestTime;
+            console.log(`DEBUG: Best time for sector ${sectorIndex + 1}:`, bestSectorTimes[sectorIndex]);
+        }
+        
+        console.log('DEBUG: Final best sector times:', bestSectorTimes);
+        return bestSectorTimes;
+    }
+
+    findBestLapIndex() {
+        if (!this.lapTimes.length) return -1;
+        
+        console.log('DEBUG: Finding best lap index from lap times:', this.lapTimes);
+        
+        // Find the best lap time (excluding out lap if it exists)
+        let bestLapIndex = this.lapTimes.length > 1 ? 1 : 0; // Skip out lap if we have multiple laps
+        let bestLapTime = this.lapTimes[bestLapIndex];
+        
+        console.log(`DEBUG: Starting with lap ${bestLapIndex} as best (${this.formatTime(bestLapTime)})`);
+        
+        for (let i = bestLapIndex + 1; i < this.lapTimes.length; i++) {
+            if (this.lapTimes[i] < bestLapTime) {
+                console.log(`DEBUG: Found better lap ${i} (${this.formatTime(this.lapTimes[i])}) vs current best ${this.formatTime(bestLapTime)}`);
+                bestLapTime = this.lapTimes[i];
+                bestLapIndex = i;
+            }
+        }
+        
+        console.log(`DEBUG: Final best lap index: ${bestLapIndex} with time ${this.formatTime(bestLapTime)}`);
+        return bestLapIndex;
     }
 }
 
