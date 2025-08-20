@@ -12,6 +12,9 @@ class VideoFrameAnalyzer {
         this.syncOffset = 0; // Time offset between video and telemetry data
         this.sectorBorders = []; // GPS-based sector borders
         this.lapSectorTimes = []; // Sector times for each lap
+        this.bestLapData = []; // Telemetry data for the best lap
+        this.bestLapIndex = -1; // Index of the best lap
+        this.diffToBestData = []; // Diff to best lap for each datapoint
         
         this.initializeElements();
         this.bindEvents();
@@ -48,6 +51,7 @@ class VideoFrameAnalyzer {
         this.latAccValue = document.getElementById('latAccValue');
         this.lonAccValue = document.getElementById('lonAccValue');
         this.altitudeValue = document.getElementById('altitudeValue');
+        this.diffValue = document.getElementById('diffValue');
         
         // GPS visualization elements
         this.gpsSection = document.getElementById('gpsSection');
@@ -392,6 +396,9 @@ class VideoFrameAnalyzer {
         
         // Generate sector splits after parsing data
         this.generateSectorSplits();
+        
+        // Calculate diff to best lap data
+        this.calculateDiffToBestLap();
     }
 
     parseCsvLine(line) {
@@ -455,6 +462,27 @@ class VideoFrameAnalyzer {
         this.latAccValue.textContent = data.latAcc.toFixed(1);
         this.lonAccValue.textContent = data.lonAcc.toFixed(1);
         this.altitudeValue.textContent = Math.round(data.altitude);
+        
+        // Update diff to best lap
+        const diffValue = this.diffToBestData[closestIndex];
+        this.diffValue.textContent = this.formatDiffTime(diffValue);
+        
+        // Color code the diff value
+        if (diffValue !== null && diffValue !== undefined && !isNaN(diffValue)) {
+            if (diffValue > 0) {
+                // Behind best lap - red
+                this.diffValue.style.color = '#ff4d4f';
+            } else if (diffValue < 0) {
+                // Ahead of best lap - green
+                this.diffValue.style.color = '#52c41a';
+            } else {
+                // Equal to best lap - blue
+                this.diffValue.style.color = '#1890ff';
+            }
+        } else {
+            // No data - default color
+            this.diffValue.style.color = '#666';
+        }
     }
 
     showCsvInfo(message, type = 'info') {
@@ -1696,6 +1724,141 @@ class VideoFrameAnalyzer {
         
         console.log(`DEBUG: Final best lap index: ${bestLapIndex} with time ${this.formatTime(bestLapTime)}`);
         return bestLapIndex;
+    }
+
+    calculateDiffToBestLap() {
+        if (!this.lapTimes.length || !this.telemetryData.length) {
+            console.log('Cannot calculate diff to best lap: missing lap times or telemetry data');
+            return;
+        }
+
+        // Find the best lap index
+        this.bestLapIndex = this.findBestLapIndex();
+        if (this.bestLapIndex === -1) {
+            console.log('No best lap found');
+            return;
+        }
+
+        // Get telemetry data for the best lap
+        const bestLapStartTime = this.lapStartTimes[this.bestLapIndex];
+        const bestLapEndTime = this.bestLapIndex < this.lapStartTimes.length - 1 ? 
+            this.lapStartTimes[this.bestLapIndex + 1] : 
+            bestLapStartTime + this.lapTimes[this.bestLapIndex];
+
+        this.bestLapData = this.telemetryData.filter(point => 
+            point.time >= bestLapStartTime && point.time <= bestLapEndTime
+        );
+
+        console.log(`Best lap ${this.bestLapIndex}: ${this.bestLapData.length} datapoints from ${this.formatTime(bestLapStartTime)} to ${this.formatTime(bestLapEndTime)}`);
+
+        // Initialize diff data array
+        this.diffToBestData = new Array(this.telemetryData.length).fill(null);
+
+        // Calculate diff for each lap
+        for (let lapIndex = 0; lapIndex < this.lapTimes.length; lapIndex++) {
+            if (lapIndex === this.bestLapIndex) {
+                // For the best lap itself, diff is always 0
+                const lapStartTime = this.lapStartTimes[lapIndex];
+                const lapEndTime = lapIndex < this.lapStartTimes.length - 1 ? 
+                    this.lapStartTimes[lapIndex + 1] : 
+                    lapStartTime + this.lapTimes[lapIndex];
+
+                for (let i = 0; i < this.telemetryData.length; i++) {
+                    const point = this.telemetryData[i];
+                    if (point.time >= lapStartTime && point.time <= lapEndTime) {
+                        this.diffToBestData[i] = 0.0;
+                    }
+                }
+                continue;
+            }
+
+            // Calculate diff for this lap
+            this.calculateLapDiffToBest(lapIndex);
+        }
+
+        console.log(`Calculated diff to best lap for ${this.diffToBestData.filter(d => d !== null).length} datapoints`);
+    }
+
+    calculateLapDiffToBest(lapIndex) {
+        const lapStartTime = this.lapStartTimes[lapIndex];
+        const lapEndTime = lapIndex < this.lapStartTimes.length - 1 ? 
+            this.lapStartTimes[lapIndex + 1] : 
+            lapStartTime + this.lapTimes[lapIndex];
+
+        const currentLapData = this.telemetryData.filter(point => 
+            point.time >= lapStartTime && point.time <= lapEndTime
+        );
+
+        if (currentLapData.length === 0 || this.bestLapData.length === 0) {
+            console.log(`No data for lap ${lapIndex} or best lap`);
+            return;
+        }
+
+        // For each datapoint in the current lap, find the corresponding point in the best lap
+        for (let i = 0; i < currentLapData.length; i++) {
+            const currentPoint = currentLapData[i];
+            const currentLapProgress = currentPoint.time - lapStartTime;
+            
+            // Find the corresponding point in the best lap using GPS trajectory intersection
+            const correspondingTime = this.findCorrespondingTimeInBestLap(currentPoint, currentLapProgress);
+            
+            if (correspondingTime !== null) {
+                // Calculate the diff: positive means behind best lap, negative means ahead
+                const bestLapStartTime = this.lapStartTimes[this.bestLapIndex];
+                const bestLapProgress = correspondingTime - bestLapStartTime;
+                const diff = currentLapProgress - bestLapProgress;
+                
+                // Find the index of this datapoint in the main telemetry array
+                const telemetryIndex = this.telemetryData.findIndex(point => 
+                    Math.abs(point.time - currentPoint.time) < 0.001
+                );
+                
+                if (telemetryIndex !== -1) {
+                    this.diffToBestData[telemetryIndex] = diff;
+                }
+            }
+        }
+    }
+
+    findCorrespondingTimeInBestLap(currentPoint, currentLapProgress) {
+        if (!currentPoint.lat || !currentPoint.lon || this.bestLapData.length === 0) {
+            return null;
+        }
+
+        // Create a perpendicular line through the current point
+        const currentPointIndex = this.bestLapData.findIndex(point => 
+            Math.abs(point.time - (this.lapStartTimes[this.bestLapIndex] + currentLapProgress)) < 1.0
+        );
+        
+        if (currentPointIndex === -1) {
+            return null;
+        }
+
+        // Use the same method as sector border crossing to find the intersection
+        const perpendicularLine = this.createPerpendicularLine(currentPoint, this.bestLapData, 
+            Math.min(currentPointIndex, this.bestLapData.length - 1));
+        
+        // Find where the best lap trajectory crosses this perpendicular line
+        const crossingTime = this.findBorderCrossing(this.bestLapData, perpendicularLine);
+        
+        return crossingTime;
+    }
+
+    formatDiffTime(seconds) {
+        if (seconds === null || seconds === undefined || isNaN(seconds)) {
+            return '+0.000';
+        }
+        
+        const sign = seconds >= 0 ? '+' : '';
+        const absSeconds = Math.abs(seconds);
+        
+        if (absSeconds >= 1) {
+            // For diffs >= 1 second, show as seconds with 3 decimal places
+            return `${sign}${absSeconds.toFixed(3)}`;
+        } else {
+            // For diffs < 1 second, show as milliseconds with 3 decimal places
+            return `${sign}${absSeconds.toFixed(3)}`;
+        }
     }
 }
 
