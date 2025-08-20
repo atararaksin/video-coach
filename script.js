@@ -10,6 +10,8 @@ class VideoFrameAnalyzer {
         this.lapStartTimes = []; // Cumulative start times for each lap
         this.selectedLapIndex = -1; // Index of selected lap for sync
         this.syncOffset = 0; // Time offset between video and telemetry data
+        this.sectorBorders = []; // GPS-based sector borders
+        this.lapSectorTimes = []; // Sector times for each lap
         
         this.initializeElements();
         this.bindEvents();
@@ -53,6 +55,13 @@ class VideoFrameAnalyzer {
         this.latAccValue = document.getElementById('latAccValue');
         this.lonAccValue = document.getElementById('lonAccValue');
         this.altitudeValue = document.getElementById('altitudeValue');
+        
+        // GPS visualization elements
+        this.gpsSection = document.getElementById('gpsSection');
+        this.gpsCanvas = document.getElementById('gpsCanvas');
+        this.gpsCtx = this.gpsCanvas.getContext('2d');
+        this.toggleGpsBtn = document.getElementById('toggleGpsView');
+        this.gpsVisible = false;
     }
 
     bindEvents() {
@@ -72,6 +81,10 @@ class VideoFrameAnalyzer {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        
+        // GPS visualization events
+        this.toggleGpsBtn.addEventListener('click', () => this.toggleGpsVisualization());
+        
     }
 
     handleFileSelect(event) {
@@ -313,6 +326,9 @@ class VideoFrameAnalyzer {
                     <strong>Data Points:</strong> ${this.telemetryData.length}<br>
                     <strong>Duration:</strong> ${this.formatTime(this.telemetryData[this.telemetryData.length - 1]?.time || 0)}
                 `);
+                
+                // Show GPS visualization button if GPS data is available
+                this.showGpsButtonIfAvailable();
             } catch (error) {
                 console.error('Error parsing CSV:', error);
                 this.showCsvInfo('Error parsing CSV file. Please check the format.', 'error');
@@ -363,6 +379,9 @@ class VideoFrameAnalyzer {
         const latAccIndex = headers.indexOf('GPS LatAcc');
         const lonAccIndex = headers.indexOf('GPS LonAcc');
         const altitudeIndex = headers.indexOf('Altitude');
+        const latIndex = headers.indexOf('GPS Latitude');
+        const lonIndex = headers.indexOf('GPS Longitude');
+        const headingIndex = headers.indexOf('GPS Heading');
         
         if (timeIndex === -1 || speedIndex === -1) {
             throw new Error('Could not find Time or GPS Speed columns');
@@ -370,7 +389,7 @@ class VideoFrameAnalyzer {
         
         // Parse data rows
         this.telemetryData = [];
-        const maxIndex = Math.max(timeIndex, speedIndex, latAccIndex, lonAccIndex, altitudeIndex);
+        const maxIndex = Math.max(timeIndex, speedIndex, latAccIndex, lonAccIndex, altitudeIndex, latIndex, lonIndex, headingIndex);
         
         for (let i = dataStartIndex; i < lines.length; i++) {
             const line = lines[i].trim();
@@ -383,6 +402,9 @@ class VideoFrameAnalyzer {
                 const latAcc = latAccIndex !== -1 ? parseFloat(values[latAccIndex]) : 0;
                 const lonAcc = lonAccIndex !== -1 ? parseFloat(values[lonAccIndex]) : 0;
                 const altitude = altitudeIndex !== -1 ? parseFloat(values[altitudeIndex]) : 0;
+                const lat = latIndex !== -1 ? parseFloat(values[latIndex]) : 0;
+                const lon = lonIndex !== -1 ? parseFloat(values[lonIndex]) : 0;
+                const heading = headingIndex !== -1 ? parseFloat(values[headingIndex]) : 0;
                 
                 if (!isNaN(time) && !isNaN(speed)) {
                     this.telemetryData.push({
@@ -390,7 +412,10 @@ class VideoFrameAnalyzer {
                         speed: speed,
                         latAcc: isNaN(latAcc) ? 0 : latAcc,
                         lonAcc: isNaN(lonAcc) ? 0 : lonAcc,
-                        altitude: isNaN(altitude) ? 0 : altitude
+                        altitude: isNaN(altitude) ? 0 : altitude,
+                        lat: isNaN(lat) ? 0 : lat,
+                        lon: isNaN(lon) ? 0 : lon,
+                        heading: isNaN(heading) ? 0 : heading
                     });
                 }
             }
@@ -399,6 +424,12 @@ class VideoFrameAnalyzer {
         this.csvData = { headers, telemetryData: this.telemetryData };
         console.log(`Parsed ${this.telemetryData.length} telemetry data points`);
         console.log(`Found ${this.lapTimes.length} lap times:`, this.lapTimes);
+        
+        // Calculate cumulative start times for each lap
+        this.calculateLapStartTimes();
+        
+        // Generate sector splits after parsing data
+        this.generateSectorSplits();
     }
 
     parseCsvLine(line) {
@@ -470,9 +501,7 @@ class VideoFrameAnalyzer {
         this.csvInfo.style.display = 'block';
     }
 
-    showLapSelection() {
-        if (!this.lapTimes.length) return;
-        
+    calculateLapStartTimes() {
         // Calculate cumulative start times for each lap
         this.lapStartTimes = [0]; // Out lap starts at 0
         let cumulativeTime = 0;
@@ -483,6 +512,12 @@ class VideoFrameAnalyzer {
                 this.lapStartTimes.push(cumulativeTime);
             }
         }
+        
+        console.log('Calculated lap start times:', this.lapStartTimes);
+    }
+
+    showLapSelection() {
+        if (!this.lapTimes.length) return;
         
         // Clear existing table rows
         this.lapTableBody.innerHTML = '';
@@ -603,6 +638,937 @@ class VideoFrameAnalyzer {
         // Log for debugging
         const lapName = lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`;
         console.log(`Jumped to ${lapName} start: Video time ${this.formatTime(videoTime)} (Data time: ${this.formatTime(lapStartTime)})`);
+    }
+
+    generateSectorSplits() {
+        if (!this.lapTimes.length || !this.telemetryData.length) {
+            console.log('Cannot generate sectors: missing lap times or telemetry data');
+            return;
+        }
+        
+        // Check if we have GPS data
+        const hasGpsData = this.telemetryData.some(point => point.lat !== 0 && point.lon !== 0);
+        if (!hasGpsData) {
+            console.warn('No GPS data found in telemetry - cannot generate sectors');
+            this.showCsvInfo('Warning: No GPS data found in telemetry. Sector splitting requires GPS coordinates (latitude, longitude) in the CSV data.', 'error');
+            return;
+        }
+        
+        // Find the best lap (excluding out lap if it exists)
+        let bestLapIndex = this.lapTimes.length > 1 ? 1 : 0;
+        let bestLapTime = this.lapTimes[bestLapIndex];
+        
+        for (let i = bestLapIndex + 1; i < this.lapTimes.length; i++) {
+            if (this.lapTimes[i] < bestLapTime) {
+                bestLapTime = this.lapTimes[i];
+                bestLapIndex = i;
+            }
+        }
+        
+        console.log(`Using Lap ${bestLapIndex} as reference (${this.formatTime(bestLapTime)})`);
+        
+        // Get telemetry data for the best lap
+        const lapStartTime = this.lapStartTimes[bestLapIndex];
+        const lapEndTime = bestLapIndex < this.lapStartTimes.length - 1 ? 
+            this.lapStartTimes[bestLapIndex + 1] : 
+            lapStartTime + this.lapTimes[bestLapIndex];
+        
+        console.log(`Lap ${bestLapIndex} time range: ${this.formatTime(lapStartTime)} to ${this.formatTime(lapEndTime)}`);
+        
+        const lapData = this.telemetryData.filter(point => 
+            point.time >= lapStartTime && point.time <= lapEndTime
+        );
+        
+        console.log(`Found ${lapData.length} telemetry points for best lap`);
+        
+        if (lapData.length === 0) {
+            console.warn('No telemetry data found for best lap - cannot generate sectors');
+            this.showCsvInfo('Warning: No telemetry data found for the best lap. Cannot generate sector splits.', 'error');
+            return;
+        }
+        
+        // Store the end point of the best lap for start/finish line visualization
+        this.bestLapEndPoint = lapData[lapData.length - 1];
+        console.log(`Stored best lap end point:`, this.bestLapEndPoint);
+        
+        // Find acceleration periods (straights)
+        const accelerationPeriods = this.findAccelerationPeriods(lapData);
+        console.log(`Found ${accelerationPeriods.length} acceleration periods:`, accelerationPeriods);
+        
+        if (accelerationPeriods.length === 0) {
+            console.warn('No acceleration periods found - cannot generate sectors');
+            this.showCsvInfo('Warning: No suitable acceleration periods found in telemetry data. Cannot generate sector splits. Ensure the data contains sufficient speed variations.', 'error');
+            return;
+        }
+        
+        // Generate sector borders
+        this.sectorBorders = this.createSectorBorders(lapData, accelerationPeriods);
+        console.log(`Generated ${this.sectorBorders.length} sector borders:`, this.sectorBorders);
+        
+        // Calculate sector times for all laps
+        this.calculateAllLapSectorTimes();
+        console.log('Calculated sector times for all laps:', this.lapSectorTimes);
+        
+        // Update the lap table to show sector times - FORCE UPDATE
+        this.forceUpdateLapTableWithSectors();
+    }
+    forceUpdateLapTableWithSectors() {
+        console.log('FORCE UPDATE: Starting lap table update with sectors');
+        
+        if (!this.lapSectorTimes.length) {
+            console.log('FORCE UPDATE: No sector times available to display');
+            return;
+        }
+        
+        // Determine number of sectors (use first lap's sector count)
+        const numSectors = this.lapSectorTimes[0] ? this.lapSectorTimes[0].length : 3;
+        console.log(`FORCE UPDATE: Updating table with ${numSectors} sectors for ${this.lapSectorTimes.length} laps`);
+        
+        // Get the table elements
+        const headerRow = this.lapTable.querySelector('thead tr');
+        const bodyRows = this.lapTableBody.querySelectorAll('tr');
+        
+        console.log(`FORCE UPDATE: Found header row: ${!!headerRow}, body rows: ${bodyRows.length}`);
+        
+        if (!headerRow) {
+            console.error('FORCE UPDATE: No header row found!');
+            return;
+        }
+        
+        // Remove ALL existing sector headers and cells first
+        const existingSectorHeaders = headerRow.querySelectorAll('.sector-header');
+        console.log(`FORCE UPDATE: Removing ${existingSectorHeaders.length} existing sector headers`);
+        existingSectorHeaders.forEach(header => header.remove());
+        
+        bodyRows.forEach((row, index) => {
+            const existingSectorCells = row.querySelectorAll('.sector-time');
+            console.log(`FORCE UPDATE: Removing ${existingSectorCells.length} existing sector cells from row ${index}`);
+            existingSectorCells.forEach(cell => cell.remove());
+        });
+        
+        // Add sector headers - insert before the last column (Jump to Start)
+        const allHeaders = headerRow.querySelectorAll('th');
+        const lastHeader = allHeaders[allHeaders.length - 1];
+        console.log(`FORCE UPDATE: Inserting ${numSectors} sector headers before last header: ${lastHeader.textContent}`);
+        
+        for (let i = 0; i < numSectors; i++) {
+            const sectorHeader = document.createElement('th');
+            sectorHeader.className = 'sector-header';
+            sectorHeader.textContent = `S${i + 1}`;
+            sectorHeader.style.backgroundColor = '#f0f0f0';
+            sectorHeader.style.border = '1px solid #ccc';
+            headerRow.insertBefore(sectorHeader, lastHeader);
+            console.log(`FORCE UPDATE: Added sector header S${i + 1}`);
+        }
+        
+        // Add sector cells to each row
+        bodyRows.forEach((row, lapIndex) => {
+            const allCells = row.querySelectorAll('td');
+            const lastCell = allCells[allCells.length - 1];
+            const sectorTimes = this.lapSectorTimes[lapIndex] || [];
+            
+            console.log(`FORCE UPDATE: Adding ${numSectors} sector cells to lap ${lapIndex}, sector times:`, sectorTimes);
+            
+            for (let i = 0; i < numSectors; i++) {
+                const sectorCell = document.createElement('td');
+                sectorCell.className = 'sector-time';
+                sectorCell.style.border = '1px solid #ccc';
+                sectorCell.style.padding = '4px';
+                sectorCell.style.textAlign = 'center';
+                
+                if (i < sectorTimes.length && sectorTimes[i] !== undefined && sectorTimes[i] !== null) {
+                    sectorCell.textContent = this.formatTime(sectorTimes[i]);
+                    sectorCell.style.backgroundColor = '#e6f7ff';
+                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: ${this.formatTime(sectorTimes[i])}`);
+                } else {
+                    sectorCell.textContent = '--';
+                    sectorCell.style.backgroundColor = '#f5f5f5';
+                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: no data`);
+                }
+                
+                row.insertBefore(sectorCell, lastCell);
+            }
+        });
+        
+        console.log(`FORCE UPDATE: Successfully updated lap table with ${numSectors} sector columns`);
+    }
+
+
+    findAccelerationPeriods(lapData) {
+        if (lapData.length < 2) return [];
+        
+        // Step 1: Find deceleration periods (at least 0.2 seconds long)
+        const decelerationPeriods = [];
+        let currentDecelPeriod = null;
+        
+        for (let i = 1; i < lapData.length; i++) {
+            const current = lapData[i];
+            const previous = lapData[i - 1];
+            const timeDiff = current.time - previous.time;
+            
+            if (timeDiff <= 0) continue;
+            
+            const acceleration = (current.speed - previous.speed) / timeDiff;
+            
+            // Start of deceleration period (negative acceleration)
+            if (acceleration < -0.5 && !currentDecelPeriod) {
+                currentDecelPeriod = {
+                    startTime: previous.time,
+                    startIndex: i - 1
+                };
+            }
+            
+            // End of deceleration period (acceleration becomes positive or neutral)
+            if (currentDecelPeriod && acceleration >= -0.5) {
+                currentDecelPeriod.endTime = current.time;
+                currentDecelPeriod.endIndex = i;
+                currentDecelPeriod.duration = currentDecelPeriod.endTime - currentDecelPeriod.startTime;
+                
+                // Only keep deceleration periods that are at least 1 seconds long
+                if (currentDecelPeriod.duration >= 1.0) {
+                    decelerationPeriods.push(currentDecelPeriod);
+                }
+                
+                currentDecelPeriod = null;
+            }
+        }
+        
+        // Handle case where deceleration continues to end of lap
+        if (currentDecelPeriod) {
+            const lastPoint = lapData[lapData.length - 1];
+            currentDecelPeriod.endTime = lastPoint.time;
+            currentDecelPeriod.endIndex = lapData.length - 1;
+            currentDecelPeriod.duration = currentDecelPeriod.endTime - currentDecelPeriod.startTime;
+            
+            if (currentDecelPeriod.duration >= 0.2) {
+                decelerationPeriods.push(currentDecelPeriod);
+            }
+        }
+        
+        // Step 2: Create sectors between deceleration periods (consecutive periods without deceleration)
+        const sectors = [];
+        let sectorStartTime = lapData[0].time;
+        
+        for (const decelPeriod of decelerationPeriods) {
+            // Create sector from current start to beginning of deceleration
+            const sectorEndTime = decelPeriod.startTime;
+            const sectorDuration = sectorEndTime - sectorStartTime;
+            
+            if (sectorDuration > 0) {
+                sectors.push({
+                    startTime: sectorStartTime,
+                    endTime: sectorEndTime,
+                    duration: sectorDuration
+                });
+            }
+            
+            // Next sector starts after this deceleration period
+            sectorStartTime = decelPeriod.endTime;
+        }
+        
+        // Add final sector from last deceleration to end of lap
+        const finalSectorEndTime = lapData[lapData.length - 1].time;
+        const finalSectorDuration = finalSectorEndTime - sectorStartTime;
+        
+        if (finalSectorDuration > 0) {
+            sectors.push({
+                startTime: sectorStartTime,
+                endTime: finalSectorEndTime,
+                duration: finalSectorDuration
+            });
+        }
+        
+        // Step 3: Merge sectors shorter than 5 seconds
+        const mergedSectors = [];
+        
+        for (let i = 0; i < sectors.length; i++) {
+            const sector = sectors[i];
+            
+            if (sector.duration < 5.0) {
+                // If it's the last sector and too short, merge with previous
+                if (i === sectors.length - 1 && mergedSectors.length > 0) {
+                    const prevSector = mergedSectors[mergedSectors.length - 1];
+                    prevSector.endTime = sector.endTime;
+                    prevSector.duration = prevSector.endTime - prevSector.startTime;
+                }
+                // If not the last sector, merge with next sector
+                else if (i < sectors.length - 1) {
+                    const nextSector = sectors[i + 1];
+                    nextSector.startTime = sector.startTime;
+                    nextSector.duration = nextSector.endTime - nextSector.startTime;
+                    // Skip the current sector (it's merged into next)
+                    continue;
+                }
+                // If it's the only sector or first sector and too short, keep it anyway
+                else {
+                    mergedSectors.push(sector);
+                }
+            } else {
+                mergedSectors.push(sector);
+            }
+        }
+        
+        // Step 4: Convert sectors to acceleration periods (for compatibility with existing code)
+        // Each sector represents a period without significant deceleration
+        const accelerationPeriods = mergedSectors.map(sector => ({
+            startTime: sector.startTime,
+            endTime: sector.endTime,
+            duration: sector.duration,
+            // These fields are for compatibility with existing createSectorBorders code
+            maxSpeed: 0, // Will be calculated if needed
+            maxSpeedTime: sector.endTime,
+            speedIncrease: 0 // Will be calculated if needed
+        }));
+        
+        return accelerationPeriods;
+    }
+
+    createSectorBorders(lapData, accelerationPeriods) {
+        const borders = [];
+        const lapEndTime = lapData[lapData.length - 1].time;
+        
+        for (let i = 0; i < accelerationPeriods.length; i++) {
+            const period = accelerationPeriods[i];
+            
+            // Place sector border 0.2 seconds before deceleration
+            const borderTime = period.endTime - 0.2;
+            
+            // Skip creating a border if it would result in a very short final sector
+            // (less than 2 seconds from lap end)
+            const timeToLapEnd = lapEndTime - borderTime;
+            if (timeToLapEnd < 2.0) {
+                console.log(`Skipping sector border at ${this.formatTime(borderTime)} - would create short final sector (${this.formatTime(timeToLapEnd)})`);
+                continue;
+            }
+            
+            // Find the closest telemetry point
+            let closestIndex = 0;
+            let minDiff = Math.abs(lapData[0].time - borderTime);
+            
+            for (let j = 1; j < lapData.length; j++) {
+                const diff = Math.abs(lapData[j].time - borderTime);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = j;
+                } else {
+                    break;
+                }
+            }
+            
+            const borderPoint = lapData[closestIndex];
+            
+            // Create GPS line perpendicular to trajectory
+            const border = this.createPerpendicularLine(borderPoint, lapData, closestIndex);
+            borders.push(border);
+        }
+        
+        // Sort borders by time
+        borders.sort((a, b) => a.time - b.time);
+        
+        return borders;
+    }
+
+    createPerpendicularLine(centerPoint, lapData, centerIndex) {
+        // Calculate trajectory direction using nearby points
+        const lookAhead = Math.min(5, lapData.length - centerIndex - 1);
+        const lookBehind = Math.min(5, centerIndex);
+        
+        let trajectoryVector = { lat: 0, lon: 0 };
+        
+        if (lookAhead > 0 && lookBehind > 0) {
+            const beforePoint = lapData[centerIndex - lookBehind];
+            const afterPoint = lapData[centerIndex + lookAhead];
+            
+            // Calculate the trajectory direction vector
+            trajectoryVector.lat = afterPoint.lat - beforePoint.lat;
+            trajectoryVector.lon = afterPoint.lon - beforePoint.lon;
+        } else {
+            // Fallback: use a smaller window
+            if (centerIndex > 0 && centerIndex < lapData.length - 1) {
+                const beforePoint = lapData[centerIndex - 1];
+                const afterPoint = lapData[centerIndex + 1];
+                trajectoryVector.lat = afterPoint.lat - beforePoint.lat;
+                trajectoryVector.lon = afterPoint.lon - beforePoint.lon;
+            } else {
+                // Use GPS heading as last resort
+                const headingRad = (centerPoint.heading || 0) * Math.PI / 180;
+                trajectoryVector.lat = Math.cos(headingRad);
+                trajectoryVector.lon = Math.sin(headingRad);
+            }
+        }
+        
+        // Apply cosine latitude correction to longitude component
+        // This accounts for longitude convergence without complex projections
+        const latRad = centerPoint.lat * Math.PI / 180;
+        const cosLat = Math.cos(latRad);
+        
+        // Adjust longitude component by cosine of latitude
+        const correctedTrajectoryVector = {
+            lat: trajectoryVector.lat,
+            lon: trajectoryVector.lon * cosLat
+        };
+        
+        // Normalize the corrected trajectory vector
+        const trajectoryLength = Math.sqrt(
+            correctedTrajectoryVector.lat * correctedTrajectoryVector.lat + 
+            correctedTrajectoryVector.lon * correctedTrajectoryVector.lon
+        );
+        
+        if (trajectoryLength > 0) {
+            correctedTrajectoryVector.lat /= trajectoryLength;
+            correctedTrajectoryVector.lon /= trajectoryLength;
+        }
+        
+        // Create perpendicular vector by rotating 90 degrees
+        // For a vector (x, y), the perpendicular vector is (-y, x)
+        const perpVector = {
+            lat: -correctedTrajectoryVector.lon,  // Perpendicular lat component
+            lon: correctedTrajectoryVector.lat    // Perpendicular lon component
+        };
+        
+        // Scale the perpendicular vector to desired length (small finite line)
+        const lineLength = 0.00004; // Approximately 4m in degrees
+        const perpLat = perpVector.lat * lineLength;
+        const perpLon = perpVector.lon * lineLength / cosLat; // Undo cosine correction for final coordinates
+        
+        return {
+            time: centerPoint.time,
+            centerLat: centerPoint.lat,
+            centerLon: centerPoint.lon,
+            trajectoryVector: trajectoryVector,
+            perpVector: perpVector,
+            startLat: centerPoint.lat - perpLat,
+            startLon: centerPoint.lon - perpLon,
+            endLat: centerPoint.lat + perpLat,
+            endLon: centerPoint.lon + perpLon
+        };
+    }
+
+    calculateAllLapSectorTimes() {
+        this.lapSectorTimes = [];
+        
+        for (let lapIndex = 0; lapIndex < this.lapTimes.length; lapIndex++) {
+            const sectorTimes = this.calculateLapSectorTimes(lapIndex);
+            this.lapSectorTimes.push(sectorTimes);
+        }
+    }
+
+    calculateLapSectorTimes(lapIndex) {
+        const lapStartTime = this.lapStartTimes[lapIndex];
+        const lapEndTime = lapIndex < this.lapStartTimes.length - 1 ? 
+            this.lapStartTimes[lapIndex + 1] : 
+            lapStartTime + this.lapTimes[lapIndex];
+        
+        const lapData = this.telemetryData.filter(point => 
+            point.time >= lapStartTime && point.time <= lapEndTime
+        );
+        
+        if (lapData.length === 0 || this.sectorBorders.length === 0) {
+            return [this.lapTimes[lapIndex]]; // Return full lap time as single sector
+        }
+        
+        const sectorTimes = [];
+        let sectorStartTime = lapStartTime;
+        
+        // Calculate time for each sector
+        for (const border of this.sectorBorders) {
+            // Find when this lap crosses the sector border
+            const crossingTime = this.findBorderCrossing(lapData, border);
+            
+            if (crossingTime > sectorStartTime) {
+                sectorTimes.push(crossingTime - sectorStartTime);
+                sectorStartTime = crossingTime;
+            }
+        }
+        
+        // Add final sector time
+        if (sectorStartTime < lapEndTime) {
+            sectorTimes.push(lapEndTime - sectorStartTime);
+        }
+        
+        return sectorTimes;
+    }
+
+    findBorderCrossing(lapData, border) {
+        // Find where the trajectory gets closest to the finite sector border line segment
+        
+        let bestCrossingTime = lapData[0].time;
+        let minDistance = this.distanceToLineSegment(lapData[0], border);
+        
+        // Look for the point where trajectory gets closest to the finite border line segment
+        for (let i = 0; i < lapData.length; i++) {
+            const point = lapData[i];
+            const distance = this.distanceToLineSegment(point, border);
+            
+            if (distance < minDistance) {
+                minDistance = distance;
+                bestCrossingTime = point.time;
+            }
+        }
+        
+        return bestCrossingTime;
+    }
+
+    // Calculate distance from point to finite line segment (not infinite line)
+    distanceToLineSegment(point, border) {
+        const x = point.lon;
+        const y = point.lat;
+        const x1 = border.startLon;
+        const y1 = border.startLat;
+        const x2 = border.endLon;
+        const y2 = border.endLat;
+        
+        // Calculate the squared length of the line segment
+        const segmentLengthSquared = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+        
+        // If the segment has zero length, return distance to the point
+        if (segmentLengthSquared === 0) {
+            return Math.sqrt((x - x1) * (x - x1) + (y - y1) * (y - y1));
+        }
+        
+        // Calculate the parameter t that represents the projection of the point onto the line segment
+        const t = Math.max(0, Math.min(1, ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / segmentLengthSquared));
+        
+        // Calculate the closest point on the line segment
+        const closestX = x1 + t * (x2 - x1);
+        const closestY = y1 + t * (y2 - y1);
+        
+        // Return the distance from the point to the closest point on the segment
+        return Math.sqrt((x - closestX) * (x - closestX) + (y - closestY) * (y - closestY));
+    }
+
+    // Helper method to find intersection between two line segments
+    lineSegmentIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
+        const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        
+        if (Math.abs(denom) < 1e-10) {
+            return null; // Lines are parallel
+        }
+        
+        const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+        const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+        
+        // Check if intersection point lies within both line segments
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+            return {
+                lat: x1 + t * (x2 - x1),
+                lon: y1 + t * (y2 - y1)
+            };
+        }
+        
+        return null; // No intersection within segments
+    }
+
+    distanceToLine(point, border) {
+        // Calculate distance from point to line segment
+        const A = border.endLat - border.startLat;
+        const B = border.startLon - border.endLon;
+        const C = A * border.startLon + B * border.startLat;
+        
+        const distance = Math.abs(A * point.lon + B * point.lat - C) / Math.sqrt(A * A + B * B);
+        return distance;
+    }
+
+    createStartFinishBorder(startFinishPoint, mercatorData) {
+        // Create a perpendicular line at the start/finish position
+        // Use the same logic as createPerpendicularLine but for the start/finish point
+        
+        // Find the index of the start/finish point in the data
+        let centerIndex = 0;
+        let minDiff = Math.abs(mercatorData[0].time - startFinishPoint.time);
+        
+        for (let i = 1; i < mercatorData.length; i++) {
+            const diff = Math.abs(mercatorData[i].time - startFinishPoint.time);
+            if (diff < minDiff) {
+                minDiff = diff;
+                centerIndex = i;
+            } else {
+                break;
+            }
+        }
+        
+        // Calculate trajectory direction using nearby points
+        const lookAhead = Math.min(5, mercatorData.length - centerIndex - 1);
+        const lookBehind = Math.min(5, centerIndex);
+        
+        let trajectoryVector = { lat: 0, lon: 0 };
+        
+        if (lookAhead > 0 && lookBehind > 0) {
+            const beforePoint = mercatorData[centerIndex - lookBehind];
+            const afterPoint = mercatorData[centerIndex + lookAhead];
+            
+            // Calculate the trajectory direction vector
+            trajectoryVector.lat = afterPoint.lat - beforePoint.lat;
+            trajectoryVector.lon = afterPoint.lon - beforePoint.lon;
+        } else {
+            // Fallback: use a smaller window
+            if (centerIndex > 0 && centerIndex < mercatorData.length - 1) {
+                const beforePoint = mercatorData[centerIndex - 1];
+                const afterPoint = mercatorData[centerIndex + 1];
+                trajectoryVector.lat = afterPoint.lat - beforePoint.lat;
+                trajectoryVector.lon = afterPoint.lon - beforePoint.lon;
+            } else {
+                // Use GPS heading as last resort
+                const headingRad = (startFinishPoint.heading || 0) * Math.PI / 180;
+                trajectoryVector.lat = Math.cos(headingRad);
+                trajectoryVector.lon = Math.sin(headingRad);
+            }
+        }
+        
+        // Apply cosine latitude correction to longitude component
+        const latRad = startFinishPoint.lat * Math.PI / 180;
+        const cosLat = Math.cos(latRad);
+        
+        // Adjust longitude component by cosine of latitude
+        const correctedTrajectoryVector = {
+            lat: trajectoryVector.lat,
+            lon: trajectoryVector.lon * cosLat
+        };
+        
+        // Normalize the corrected trajectory vector
+        const trajectoryLength = Math.sqrt(
+            correctedTrajectoryVector.lat * correctedTrajectoryVector.lat + 
+            correctedTrajectoryVector.lon * correctedTrajectoryVector.lon
+        );
+        
+        if (trajectoryLength > 0) {
+            correctedTrajectoryVector.lat /= trajectoryLength;
+            correctedTrajectoryVector.lon /= trajectoryLength;
+        }
+        
+        // Create perpendicular vector by rotating 90 degrees
+        const perpVector = {
+            lat: -correctedTrajectoryVector.lon,
+            lon: correctedTrajectoryVector.lat
+        };
+        
+        // Scale the perpendicular vector to desired length
+        const lineLength = 0.00004; // Approximately 4m in degrees
+        const perpLat = perpVector.lat * lineLength;
+        const perpLon = perpVector.lon * lineLength / cosLat; // Undo cosine correction for final coordinates
+        
+        return {
+            time: startFinishPoint.time,
+            centerLat: startFinishPoint.lat,
+            centerLon: startFinishPoint.lon,
+            trajectoryVector: trajectoryVector,
+            perpVector: perpVector,
+            startLat: startFinishPoint.lat - perpLat,
+            startLon: startFinishPoint.lon - perpLon,
+            endLat: startFinishPoint.lat + perpLat,
+            endLon: startFinishPoint.lon + perpLon
+        };
+    }
+
+    updateLapTableWithSectors() {
+        if (!this.lapSectorTimes.length) {
+            console.log('No sector times available to display');
+            return;
+        }
+        
+        // Determine number of sectors (use first lap's sector count)
+        const numSectors = this.lapSectorTimes[0] ? this.lapSectorTimes[0].length : 3;
+        console.log(`Updating table with ${numSectors} sectors for ${this.lapSectorTimes.length} laps`);
+        
+        // Update table header to include sector columns
+        const headerRow = this.lapTable.querySelector('thead tr');
+        if (headerRow) {
+            // Remove existing sector headers
+            const existingSectorHeaders = headerRow.querySelectorAll('.sector-header');
+            existingSectorHeaders.forEach(header => header.remove());
+            
+            // Find the "Jump to Start" column and insert sector headers before it
+            const jumpHeader = headerRow.querySelector('th:last-child'); // "Jump to Start" column
+            
+            for (let i = 0; i < numSectors; i++) {
+                const sectorHeader = document.createElement('th');
+                sectorHeader.className = 'sector-header';
+                sectorHeader.textContent = `S${i + 1}`;
+                headerRow.insertBefore(sectorHeader, jumpHeader);
+            }
+        }
+        
+        // Update each row with sector times
+        const rows = this.lapTableBody.querySelectorAll('tr');
+        rows.forEach((row, lapIndex) => {
+            // Remove existing sector cells
+            const existingSectorCells = row.querySelectorAll('.sector-time');
+            existingSectorCells.forEach(cell => cell.remove());
+            
+            // Find the jump button cell and insert sector cells before it
+            const jumpCell = row.querySelector('td:last-child'); // Jump button cell
+            const sectorTimes = this.lapSectorTimes[lapIndex] || [];
+            
+            console.log(`Lap ${lapIndex} sector times:`, sectorTimes);
+            
+            for (let i = 0; i < numSectors; i++) {
+                const sectorCell = document.createElement('td');
+                sectorCell.className = 'sector-time';
+                
+                if (i < sectorTimes.length && sectorTimes[i] !== undefined) {
+                    sectorCell.textContent = this.formatTime(sectorTimes[i]);
+                    console.log(`Sector ${i + 1} for lap ${lapIndex}: ${this.formatTime(sectorTimes[i])}`);
+                } else {
+                    sectorCell.textContent = '--';
+                    console.log(`Sector ${i + 1} for lap ${lapIndex}: no data`);
+                }
+                
+                row.insertBefore(sectorCell, jumpCell);
+            }
+        });
+        
+        console.log(`Successfully updated lap table with ${numSectors} sector columns`);
+    }
+
+    toggleGpsVisualization() {
+        if (!this.telemetryData.length) {
+            this.showCsvInfo('No GPS data available for visualization. Please load a CSV file with GPS coordinates.', 'error');
+            return;
+        }
+
+        // Check if we have GPS data
+        const hasGpsData = this.telemetryData.some(point => point.lat !== 0 && point.lon !== 0);
+        if (!hasGpsData) {
+            this.showCsvInfo('No GPS coordinates found in telemetry data. GPS visualization requires latitude and longitude data.', 'error');
+            return;
+        }
+
+        this.gpsVisible = !this.gpsVisible;
+        
+        if (this.gpsVisible) {
+            this.gpsSection.style.display = 'block';
+            this.toggleGpsBtn.textContent = 'Hide GPS Track';
+            this.renderGpsVisualization();
+        } else {
+            this.gpsSection.style.display = 'none';
+            this.toggleGpsBtn.textContent = 'Show GPS Track';
+        }
+    }
+
+    renderGpsVisualization() {
+        const canvas = this.gpsCanvas;
+        const ctx = this.gpsCtx;
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Sample data points (every 5th point to reduce density)
+        const sampledData = this.telemetryData.filter((point, index) => 
+            index % 5 === 0 && point.lat !== 0 && point.lon !== 0
+        );
+
+        if (sampledData.length === 0) {
+            ctx.fillStyle = '#666';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('No GPS data to display', width / 2, height / 2);
+            return;
+        }
+
+        // Convert all GPS points to Mercator coordinates
+        const mercatorData = sampledData.map(point => ({
+            ...point,
+            mercatorX: this.lonToMercatorX(point.lon),
+            mercatorY: this.latToMercatorY(point.lat)
+        }));
+
+        // Find Mercator bounds
+        const bounds = this.calculateMercatorBounds(mercatorData);
+        
+        // Add padding
+        const padding = 0.1; // 10% padding
+        const xRange = bounds.maxX - bounds.minX;
+        const yRange = bounds.maxY - bounds.minY;
+        bounds.minX -= xRange * padding;
+        bounds.maxX += xRange * padding;
+        bounds.minY -= yRange * padding;
+        bounds.maxY += yRange * padding;
+
+        // Convert Mercator coordinates to canvas coordinates
+        const mercatorToCanvas = (mercatorX, mercatorY) => {
+            const x = ((mercatorX - bounds.minX) / (bounds.maxX - bounds.minX)) * width;
+            const y = height - ((mercatorY - bounds.minY) / (bounds.maxY - bounds.minY)) * height;
+            return { x, y };
+        };
+
+        // Draw track
+        ctx.strokeStyle = '#1890ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        for (let i = 0; i < mercatorData.length; i++) {
+            const point = mercatorToCanvas(mercatorData[i].mercatorX, mercatorData[i].mercatorY);
+            if (i === 0) {
+                ctx.moveTo(point.x, point.y);
+            } else {
+                ctx.lineTo(point.x, point.y);
+            }
+        }
+        ctx.stroke();
+
+        // Draw data points
+        ctx.fillStyle = '#1890ff';
+        for (const dataPoint of mercatorData) {
+            const point = mercatorToCanvas(dataPoint.mercatorX, dataPoint.mercatorY);
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 1.5, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+
+        // Draw sector borders
+        if (this.sectorBorders.length > 0) {
+            ctx.strokeStyle = '#ff4d4f';
+            ctx.lineWidth = 3;
+            
+            for (let i = 0; i < this.sectorBorders.length; i++) {
+                const border = this.sectorBorders[i];
+                const startMercatorX = this.lonToMercatorX(border.startLon);
+                const startMercatorY = this.latToMercatorY(border.startLat);
+                const endMercatorX = this.lonToMercatorX(border.endLon);
+                const endMercatorY = this.latToMercatorY(border.endLat);
+                
+                const startPoint = mercatorToCanvas(startMercatorX, startMercatorY);
+                const endPoint = mercatorToCanvas(endMercatorX, endMercatorY);
+                
+                ctx.beginPath();
+                ctx.moveTo(startPoint.x, startPoint.y);
+                ctx.lineTo(endPoint.x, endPoint.y);
+                ctx.stroke();
+                
+                // Add sector number label
+                const midPoint = {
+                    x: (startPoint.x + endPoint.x) / 2,
+                    y: (startPoint.y + endPoint.y) / 2
+                };
+                
+                ctx.fillStyle = '#ff4d4f';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`S${i + 1}`, midPoint.x, midPoint.y - 5);
+            }
+            
+            // Draw start/finish line as the final sector border
+            // Use the end point of the reference/best lap, not the first data point
+            if (mercatorData.length > 0 && this.bestLapEndPoint) {
+                const numSectors = this.sectorBorders.length + 1; // Total sectors = borders + 1
+                
+                // Create a perpendicular line at the lap end position (start/finish line)
+                const startFinishBorder = this.createStartFinishBorder(this.bestLapEndPoint, mercatorData);
+                
+                if (startFinishBorder) {
+                    const startMercatorX = this.lonToMercatorX(startFinishBorder.startLon);
+                    const startMercatorY = this.latToMercatorY(startFinishBorder.startLat);
+                    const endMercatorX = this.lonToMercatorX(startFinishBorder.endLon);
+                    const endMercatorY = this.latToMercatorY(startFinishBorder.endLat);
+                    
+                    const startPoint = mercatorToCanvas(startMercatorX, startMercatorY);
+                    const endPoint = mercatorToCanvas(endMercatorX, endMercatorY);
+                    
+                    // Draw the start/finish line with a different style (thicker, different color)
+                    ctx.strokeStyle = '#52c41a'; // Green color to match start/finish point
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(startPoint.x, startPoint.y);
+                    ctx.lineTo(endPoint.x, endPoint.y);
+                    ctx.stroke();
+                    
+                    // Add start/finish sector label
+                    const midPoint = {
+                        x: (startPoint.x + endPoint.x) / 2,
+                        y: (startPoint.y + endPoint.y) / 2
+                    };
+                    
+                    ctx.fillStyle = '#52c41a';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Start/S${numSectors}`, midPoint.x, midPoint.y - 5);
+                }
+            }
+        }
+
+        // Draw coordinate info
+        ctx.fillStyle = '#666';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'left';
+        const originalBounds = this.calculateGpsBounds(sampledData);
+        ctx.fillText(`Lat: ${originalBounds.minLat.toFixed(6)} to ${originalBounds.maxLat.toFixed(6)}`, 10, height - 25);
+        ctx.fillText(`Lon: ${originalBounds.minLon.toFixed(6)} to ${originalBounds.maxLon.toFixed(6)}`, 10, height - 10);
+
+        // Draw data info
+        ctx.textAlign = 'right';
+        ctx.fillText(`${sampledData.length} points (sampled from ${this.telemetryData.length})`, width - 10, height - 25);
+        ctx.fillText(`${this.sectorBorders.length} sector borders (Mercator projection)`, width - 10, height - 10);
+    }
+
+    // Web Mercator projection functions
+    lonToMercatorX(lon) {
+        return lon * Math.PI / 180;
+    }
+
+    latToMercatorY(lat) {
+        const latRad = lat * Math.PI / 180;
+        return Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+    }
+
+    mercatorXToLon(mercatorX) {
+        return mercatorX * 180 / Math.PI;
+    }
+
+    mercatorYToLat(mercatorY) {
+        return (2 * Math.atan(Math.exp(mercatorY)) - Math.PI / 2) * 180 / Math.PI;
+    }
+
+    calculateMercatorBounds(mercatorData) {
+        let minX = mercatorData[0].mercatorX;
+        let maxX = mercatorData[0].mercatorX;
+        let minY = mercatorData[0].mercatorY;
+        let maxY = mercatorData[0].mercatorY;
+
+        for (const point of mercatorData) {
+            minX = Math.min(minX, point.mercatorX);
+            maxX = Math.max(maxX, point.mercatorX);
+            minY = Math.min(minY, point.mercatorY);
+            maxY = Math.max(maxY, point.mercatorY);
+        }
+
+        return { minX, maxX, minY, maxY };
+    }
+
+    calculateGpsBounds(data) {
+        let minLat = data[0].lat;
+        let maxLat = data[0].lat;
+        let minLon = data[0].lon;
+        let maxLon = data[0].lon;
+
+        for (const point of data) {
+            minLat = Math.min(minLat, point.lat);
+            maxLat = Math.max(maxLat, point.lat);
+            minLon = Math.min(minLon, point.lon);
+            maxLon = Math.max(maxLon, point.lon);
+        }
+
+        return { minLat, maxLat, minLon, maxLon };
+    }
+
+
+    showGpsButtonIfAvailable() {
+        // Check if we have GPS data
+        const hasGpsData = this.telemetryData.some(point => point.lat !== 0 && point.lon !== 0);
+        
+        if (hasGpsData) {
+            // Show the GPS section and button
+            this.gpsSection.style.display = 'block';
+            this.toggleGpsBtn.textContent = 'Show GPS Track';
+            this.gpsVisible = false;
+            console.log('GPS data detected - GPS visualization available');
+        } else {
+            // Hide GPS section if no GPS data
+            this.gpsSection.style.display = 'none';
+            console.log('No GPS data found - GPS visualization not available');
+        }
     }
 }
 

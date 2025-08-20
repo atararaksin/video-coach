@@ -219,6 +219,28 @@ header p {
     transform: translateY(0);
 }
 
+/* Sector time styling */
+.sector-header {
+    background: #52c41a !important;
+    color: white;
+    font-size: 0.85rem;
+    text-align: center;
+    min-width: 60px;
+}
+
+.sector-time {
+    font-family: 'Courier New', monospace;
+    color: #4a5568;
+    text-align: center;
+    font-size: 0.85rem;
+    background: #f0f8ff;
+    border-left: 1px solid #e6f7ff;
+}
+
+.sector-time:hover {
+    background: #e6f7ff;
+}
+
 /* Video Section */
 .video-section {
     background: white;
@@ -496,4 +518,118 @@ header p {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #5a67d8;
+}
+
+/* GPS Visualization Section */
+.gps-section {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    margin-top: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.gps-section h3 {
+    color: #2d3748;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+    text-align: center;
+}
+
+.gps-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+#gpsCanvas {
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.gps-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.gps-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.gps-btn:hover {
+    background: #5a67d8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.gps-legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #4a5568;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid #e2e8f0;
+}
+
+.track-color {
+    background: #1890ff;
+}
+
+.sector-color {
+    background: #ff4d4f;
+}
+
+.start-color {
+    background: #52c41a;
+}
+
+
+@media (max-width: 768px) {
+    .gps-section {
+        padding: 20px;
+    }
+    
+    #gpsCanvas {
+        width: 100%;
+        height: auto;
+        max-width: 600px;
+    }
+    
+    .gps-controls {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .gps-legend {
+        justify-content: center;
+    }
 }
