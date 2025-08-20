@@ -46,7 +46,6 @@
                                     <th>Select</th>
                                     <th>Lap #</th>
                                     <th>Lap Time</th>
-                                    <th>Start Time</th>
                                     <th>Jump to Start</th>
                                 </tr>
                             </thead>
@@ -114,6 +113,31 @@
                         <p id="syncInfo" style="display: none;">Sync Point: <span id="syncDetails">-</span></p>
                         <div id="syncInstructions" style="display: none;">
                             <p><strong>Next Step:</strong> Select a lap from the table above to complete synchronization.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- GPS Visualization Section -->
+            <section class="gps-section" id="gpsSection" style="display: none;">
+                <h3>GPS Track Visualization</h3>
+                <div class="gps-container">
+                    <canvas id="gpsCanvas" width="800" height="600"></canvas>
+                </div>
+                <div class="gps-controls">
+                    <button id="toggleGpsView" class="gps-btn">Show GPS Track</button>
+                    <div class="gps-legend">
+                        <div class="legend-item">
+                            <span class="legend-color track-color"></span>
+                            <span>GPS Track</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color sector-color"></span>
+                            <span>Sector Borders</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color start-color"></span>
+                            <span>Start/Finish</span>
                         </div>
                     </div>
                 </div>

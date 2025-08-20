@@ -288,6 +288,15 @@ class VideoFrameAnalyzer {
         return `${minutes.toString().padStart(2, '0')}:${wholeSeconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
     }
 
+    formatSectorTime(seconds) {
+        if (isNaN(seconds)) return '0.000';
+        
+        const wholeSeconds = Math.floor(seconds);
+        const milliseconds = Math.round((seconds - wholeSeconds) * 1000);
+        
+        return `${wholeSeconds}.${milliseconds.toString().padStart(3, '0')}`;
+    }
+
     formatFileSize(bytes) {
         if (bytes === 0) return '0 Bytes';
         
@@ -546,11 +555,6 @@ class VideoFrameAnalyzer {
             timeCell.className = 'lap-time';
             timeCell.textContent = this.formatTime(this.lapTimes[i]);
             
-            // Start time cell
-            const startCell = document.createElement('td');
-            startCell.className = 'start-time';
-            startCell.textContent = this.formatTime(this.lapStartTimes[i]);
-            
             // Jump button cell
             const jumpCell = document.createElement('td');
             const jumpBtn = document.createElement('button');
@@ -562,7 +566,6 @@ class VideoFrameAnalyzer {
             row.appendChild(radioCell);
             row.appendChild(lapCell);
             row.appendChild(timeCell);
-            row.appendChild(startCell);
             row.appendChild(jumpCell);
             
             this.lapTableBody.appendChild(row);
@@ -777,9 +780,9 @@ class VideoFrameAnalyzer {
                 sectorCell.style.textAlign = 'center';
                 
                 if (i < sectorTimes.length && sectorTimes[i] !== undefined && sectorTimes[i] !== null) {
-                    sectorCell.textContent = this.formatTime(sectorTimes[i]);
+                    sectorCell.textContent = this.formatSectorTime(sectorTimes[i]);
                     sectorCell.style.backgroundColor = '#e6f7ff';
-                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: ${this.formatTime(sectorTimes[i])}`);
+                    console.log(`FORCE UPDATE: Sector ${i + 1} for lap ${lapIndex}: ${this.formatSectorTime(sectorTimes[i])}`);
                 } else {
                     sectorCell.textContent = '--';
                     sectorCell.style.backgroundColor = '#f5f5f5';
@@ -1090,12 +1093,46 @@ class VideoFrameAnalyzer {
     }
 
     findBorderCrossing(lapData, border) {
-        // Find where the trajectory gets closest to the finite sector border line segment
+        // Find where the trajectory actually intersects the sector border line
+        // This provides much higher precision than just finding the closest point
         
         let bestCrossingTime = lapData[0].time;
         let minDistance = this.distanceToLineSegment(lapData[0], border);
+        let intersectionFound = false;
         
-        // Look for the point where trajectory gets closest to the finite border line segment
+        // Look for actual intersection between consecutive trajectory segments and the border line
+        for (let i = 0; i < lapData.length - 1; i++) {
+            const point1 = lapData[i];
+            const point2 = lapData[i + 1];
+            
+            // Check if trajectory segment intersects with border line segment
+            const intersection = this.lineSegmentIntersection(
+                point1.lon, point1.lat,
+                point2.lon, point2.lat,
+                border.startLon, border.startLat,
+                border.endLon, border.endLat
+            );
+            
+            if (intersection && intersection.t !== undefined) {
+                // Use the interpolation factor directly from the intersection calculation
+                // intersection.t is already the correct interpolation factor (0 = point1, 1 = point2)
+                const t = Math.max(0, Math.min(1, intersection.t)); // Clamp to [0,1] for safety
+                
+                // Interpolate the precise crossing time
+                const preciseCrossingTime = point1.time + t * (point2.time - point1.time);
+                
+                // Validate the result
+                if (preciseCrossingTime >= point1.time && preciseCrossingTime <= point2.time) {
+                    console.log(`Found precise border crossing at ${this.formatTime(preciseCrossingTime)} (t=${t.toFixed(3)}, between ${this.formatTime(point1.time)} and ${this.formatTime(point2.time)})`);
+                    return preciseCrossingTime;
+                } else {
+                    console.warn(`Invalid interpolated time ${this.formatTime(preciseCrossingTime)}, falling back to closest point`);
+                }
+            }
+        }
+        
+        // Fallback: if no intersection found, use the closest point method
+        console.log('No intersection found, using closest point method');
         for (let i = 0; i < lapData.length; i++) {
             const point = lapData[i];
             const distance = this.distanceToLineSegment(point, border);
@@ -1151,8 +1188,9 @@ class VideoFrameAnalyzer {
         // Check if intersection point lies within both line segments
         if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
             return {
-                lat: x1 + t * (x2 - x1),
-                lon: y1 + t * (y2 - y1)
+                lon: x1 + t * (x2 - x1),  // x1 is longitude
+                lat: y1 + t * (y2 - y1),  // y1 is latitude
+                t: t  // Return the interpolation factor for the first segment
             };
         }
         
