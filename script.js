@@ -63,6 +63,11 @@ class VideoFrameAnalyzer {
         this.gpsCanvas = document.getElementById('gpsCanvas');
         this.gpsCtx = this.gpsCanvas.getContext('2d');
         this.gpsVisible = false;
+        this.layerSelect = document.getElementById('layerSelect');
+        this.refreshMapBtn = document.getElementById('refreshMap');
+        this.currentMapLayer = 'satellite';
+        this.tileCache = new Map(); // Cache for map tiles
+        this.loadingTiles = new Set(); // Track tiles being loaded
     }
 
     bindEvents() {
@@ -81,6 +86,14 @@ class VideoFrameAnalyzer {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        
+        // GPS layer controls
+        if (this.layerSelect) {
+            this.layerSelect.addEventListener('change', (e) => this.handleLayerChange(e));
+        }
+        if (this.refreshMapBtn) {
+            this.refreshMapBtn.addEventListener('click', () => this.refreshGpsVisualization());
+        }
     }
 
     handleFileSelect(event) {
@@ -1496,9 +1509,16 @@ class VideoFrameAnalyzer {
             return { x, y };
         };
 
+        // Draw satellite/map tiles if enabled
+        if (this.currentMapLayer !== 'none') {
+            this.drawMapTiles(ctx, bounds, width, height, mercatorToCanvas);
+        }
+
         // Draw track
         ctx.strokeStyle = '#1890ff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 2;
         ctx.beginPath();
 
         for (let i = 0; i < mercatorData.length; i++) {
@@ -1510,21 +1530,26 @@ class VideoFrameAnalyzer {
             }
         }
         ctx.stroke();
+        ctx.shadowBlur = 0; // Reset shadow
 
         // Draw data points
         ctx.fillStyle = '#1890ff';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
         for (const dataPoint of mercatorData) {
             const point = mercatorToCanvas(dataPoint.mercatorX, dataPoint.mercatorY);
             ctx.beginPath();
-            ctx.arc(point.x, point.y, 1.5, 0, 2 * Math.PI);
+            ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
             ctx.fill();
+            ctx.stroke();
         }
-
 
         // Draw sector borders
         if (this.sectorBorders.length > 0) {
             ctx.strokeStyle = '#ff4d4f';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 4;
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+            ctx.shadowBlur = 2;
             
             for (let i = 0; i < this.sectorBorders.length; i++) {
                 const border = this.sectorBorders[i];
@@ -1541,24 +1566,25 @@ class VideoFrameAnalyzer {
                 ctx.lineTo(endPoint.x, endPoint.y);
                 ctx.stroke();
                 
-                // Add sector number label
+                // Add sector number label with background
                 const midPoint = {
                     x: (startPoint.x + endPoint.x) / 2,
                     y: (startPoint.y + endPoint.y) / 2
                 };
                 
-                ctx.fillStyle = '#ff4d4f';
-                ctx.font = 'bold 14px Arial';
+                // Draw label background
+                ctx.fillStyle = 'rgba(255, 77, 79, 0.9)';
+                ctx.fillRect(midPoint.x - 15, midPoint.y - 18, 30, 16);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText(`S${i + 1}`, midPoint.x, midPoint.y - 5);
             }
             
-            // Draw start/finish line as the final sector border
-            // Use the end point of the reference/best lap, not the first data point
+            // Draw start/finish line
             if (mercatorData.length > 0 && this.bestLapEndPoint) {
-                const numSectors = this.sectorBorders.length + 1; // Total sectors = borders + 1
-                
-                // Create a perpendicular line at the lap end position (start/finish line)
+                const numSectors = this.sectorBorders.length + 1;
                 const startFinishBorder = this.createStartFinishBorder(this.bestLapEndPoint, mercatorData);
                 
                 if (startFinishBorder) {
@@ -1570,26 +1596,29 @@ class VideoFrameAnalyzer {
                     const startPoint = mercatorToCanvas(startMercatorX, startMercatorY);
                     const endPoint = mercatorToCanvas(endMercatorX, endMercatorY);
                     
-                    // Draw the start/finish line with a different style (thicker, different color)
-                    ctx.strokeStyle = '#52c41a'; // Green color to match start/finish point
-                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = '#52c41a';
+                    ctx.lineWidth = 5;
                     ctx.beginPath();
                     ctx.moveTo(startPoint.x, startPoint.y);
                     ctx.lineTo(endPoint.x, endPoint.y);
                     ctx.stroke();
                     
-                    // Add start/finish sector label
+                    // Add start/finish label with background
                     const midPoint = {
                         x: (startPoint.x + endPoint.x) / 2,
                         y: (startPoint.y + endPoint.y) / 2
                     };
                     
-                    ctx.fillStyle = '#52c41a';
-                    ctx.font = 'bold 14px Arial';
+                    ctx.fillStyle = 'rgba(82, 196, 26, 0.9)';
+                    ctx.fillRect(midPoint.x - 25, midPoint.y - 18, 50, 16);
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 12px Arial';
                     ctx.textAlign = 'center';
                     ctx.fillText(`Start/S${numSectors}`, midPoint.x, midPoint.y - 5);
                 }
             }
+            ctx.shadowBlur = 0; // Reset shadow
         }
 
         // Draw coordinate info
@@ -1603,7 +1632,7 @@ class VideoFrameAnalyzer {
         // Draw data info
         ctx.textAlign = 'right';
         ctx.fillText(`${sampledData.length} points (sampled from ${this.telemetryData.length})`, width - 10, height - 25);
-        ctx.fillText(`${this.sectorBorders.length} sector borders (Mercator projection)`, width - 10, height - 10);
+        ctx.fillText(`${this.sectorBorders.length} sector borders (${this.currentMapLayer} layer)`, width - 10, height - 10);
     }
 
     // Web Mercator projection functions
@@ -1929,6 +1958,218 @@ class VideoFrameAnalyzer {
             this.deltaBarFill.style.width = `${barWidth}%`;
             this.deltaBarFill.style.background = '#ff4d4f';
         }
+    }
+
+    // Handle layer selection change
+    handleLayerChange(event) {
+        this.currentMapLayer = event.target.value;
+        console.log(`Map layer changed to: ${this.currentMapLayer}`);
+        
+        // Clear tile cache when switching layers
+        this.tileCache.clear();
+        this.loadingTiles.clear();
+        
+        // Re-render GPS visualization with new layer
+        if (this.gpsVisible) {
+            this.renderGpsVisualization();
+        }
+    }
+
+    // Refresh GPS visualization
+    refreshGpsVisualization() {
+        if (!this.gpsVisible) {
+            this.showGpsVisualizationIfAvailable();
+        } else {
+            // Clear cache and re-render
+            this.tileCache.clear();
+            this.loadingTiles.clear();
+            this.renderGpsVisualization();
+        }
+    }
+
+    // Draw map tiles as background
+    drawMapTiles(ctx, bounds, width, height, mercatorToCanvas) {
+        // Calculate appropriate zoom level based on the view
+        const latRange = this.mercatorYToLat(bounds.maxY) - this.mercatorYToLat(bounds.minY);
+        const lonRange = this.mercatorXToLon(bounds.maxX) - this.mercatorXToLon(bounds.minX);
+        
+        // For racing tracks, we want high detail, so use a more aggressive zoom calculation
+        // Calculate zoom based on the smaller dimension to ensure good detail
+        const minRange = Math.min(latRange, lonRange);
+        
+        // Improved zoom calculation for racing tracks
+        // This formula gives higher zoom levels for smaller areas
+        let zoom;
+        if (minRange > 0.1) {
+            // Very large area - use lower zoom
+            zoom = Math.floor(Math.log2(360 / minRange)) - 2;
+        } else if (minRange > 0.01) {
+            // Medium area - use medium-high zoom
+            zoom = Math.floor(Math.log2(360 / minRange)) + 1;
+        } else {
+            // Small area (typical racing track) - use high zoom for detail
+            zoom = Math.floor(Math.log2(360 / minRange)) + 3;
+        }
+        
+        // For racing tracks, prefer higher zoom levels (15-18) for sharp detail
+        const clampedZoom = Math.max(14, Math.min(18, zoom)); // Minimum zoom 14 for racing tracks
+        
+        console.log(`GPS bounds - Lat range: ${latRange.toFixed(6)}, Lon range: ${lonRange.toFixed(6)}`);
+        console.log(`Calculated zoom: ${zoom}, Using zoom level: ${clampedZoom}`);
+        
+        // Get tile URLs for the current layer
+        const tileUrls = this.getTileUrls(this.currentMapLayer);
+        if (!tileUrls.length) {
+            console.warn(`No tile URLs available for layer: ${this.currentMapLayer}`);
+            return;
+        }
+        
+        // Calculate tile bounds
+        const tileBounds = this.calculateTileBounds(bounds, clampedZoom);
+        console.log(`Tile bounds at zoom ${clampedZoom}:`, tileBounds);
+        
+        // Draw tiles
+        for (let x = tileBounds.minX; x <= tileBounds.maxX; x++) {
+            for (let y = tileBounds.minY; y <= tileBounds.maxY; y++) {
+                this.drawTile(ctx, x, y, clampedZoom, bounds, width, height, mercatorToCanvas, tileUrls);
+            }
+        }
+    }
+
+    // Get tile URLs for different map layers
+    getTileUrls(layer) {
+        const tileUrls = {
+            satellite: [
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}' // Google Satellite as fallback
+            ],
+            osm: [
+                // Higher quality OSM alternatives
+                'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', // OSM France - often higher quality
+                'https://tile-a.openstreetmap.fr/hot/{z}/{x}/{y}.png', // Humanitarian OSM - good quality
+                'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png', // Standard OSM with 'a' subdomain
+                'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png', // Standard OSM with 'b' subdomain
+                'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'  // Standard OSM with 'c' subdomain
+            ],
+            terrain: [
+                'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}',
+                'https://tile.opentopomap.org/{z}/{x}/{y}.png' // OpenTopoMap as fallback
+            ]
+        };
+        
+        return tileUrls[layer] || [];
+    }
+
+    // Calculate which tiles we need to cover the bounds
+    calculateTileBounds(bounds, zoom) {
+        const tileSize = 256;
+        const n = Math.pow(2, zoom);
+        
+        // Convert mercator bounds to tile coordinates
+        const minTileX = Math.floor((this.mercatorXToLon(bounds.minX) + 180) / 360 * n);
+        const maxTileX = Math.floor((this.mercatorXToLon(bounds.maxX) + 180) / 360 * n);
+        
+        const minLat = this.mercatorYToLat(bounds.minY);
+        const maxLat = this.mercatorYToLat(bounds.maxY);
+        
+        const minTileY = Math.floor((1 - Math.log(Math.tan(maxLat * Math.PI / 180) + 1 / Math.cos(maxLat * Math.PI / 180)) / Math.PI) / 2 * n);
+        const maxTileY = Math.floor((1 - Math.log(Math.tan(minLat * Math.PI / 180) + 1 / Math.cos(minLat * Math.PI / 180)) / Math.PI) / 2 * n);
+        
+        return {
+            minX: Math.max(0, minTileX),
+            maxX: Math.min(n - 1, maxTileX),
+            minY: Math.max(0, minTileY),
+            maxY: Math.min(n - 1, maxTileY)
+        };
+    }
+
+    // Draw a single tile
+    drawTile(ctx, tileX, tileY, zoom, bounds, width, height, mercatorToCanvas, tileUrls) {
+        const tileKey = `${this.currentMapLayer}_${zoom}_${tileX}_${tileY}`;
+        
+        // Check if tile is already cached
+        if (this.tileCache.has(tileKey)) {
+            const img = this.tileCache.get(tileKey);
+            if (img.complete && img.naturalWidth > 0) {
+                this.renderTileToCanvas(ctx, img, tileX, tileY, zoom, bounds, width, height, mercatorToCanvas);
+                return;
+            }
+        }
+        
+        // Check if tile is already being loaded
+        if (this.loadingTiles.has(tileKey)) {
+            return;
+        }
+        
+        // Load tile
+        this.loadingTiles.add(tileKey);
+        
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = () => {
+            this.tileCache.set(tileKey, img);
+            this.loadingTiles.delete(tileKey);
+            
+            // Re-render the visualization to show the loaded tile
+            if (this.gpsVisible) {
+                this.renderGpsVisualization();
+            }
+        };
+        
+        img.onerror = () => {
+            this.loadingTiles.delete(tileKey);
+            console.warn(`Failed to load tile: ${tileKey}`);
+        };
+        
+        // Try each URL until one works
+        let urlIndex = 0;
+        const tryNextUrl = () => {
+            if (urlIndex < tileUrls.length) {
+                const url = tileUrls[urlIndex]
+                    .replace('{z}', zoom)
+                    .replace('{x}', tileX)
+                    .replace('{y}', tileY);
+                
+                img.src = url;
+                urlIndex++;
+            }
+        };
+        
+        img.onerror = () => {
+            tryNextUrl();
+        };
+        
+        tryNextUrl();
+    }
+
+    // Render a loaded tile to the canvas
+    renderTileToCanvas(ctx, img, tileX, tileY, zoom, bounds, width, height, mercatorToCanvas) {
+        const n = Math.pow(2, zoom);
+        
+        // Calculate tile bounds in mercator coordinates
+        const tileLonMin = (tileX / n) * 360 - 180;
+        const tileLonMax = ((tileX + 1) / n) * 360 - 180;
+        
+        const tileLatMax = Math.atan(Math.sinh(Math.PI * (1 - 2 * tileY / n))) * 180 / Math.PI;
+        const tileLatMin = Math.atan(Math.sinh(Math.PI * (1 - 2 * (tileY + 1) / n))) * 180 / Math.PI;
+        
+        const tileMercatorMinX = this.lonToMercatorX(tileLonMin);
+        const tileMercatorMaxX = this.lonToMercatorX(tileLonMax);
+        const tileMercatorMinY = this.latToMercatorY(tileLatMin);
+        const tileMercatorMaxY = this.latToMercatorY(tileLatMax);
+        
+        // Convert to canvas coordinates
+        const topLeft = mercatorToCanvas(tileMercatorMinX, tileMercatorMaxY);
+        const bottomRight = mercatorToCanvas(tileMercatorMaxX, tileMercatorMinY);
+        
+        const tileWidth = bottomRight.x - topLeft.x;
+        const tileHeight = bottomRight.y - topLeft.y;
+        
+        // Draw the tile with reduced opacity so track is still visible
+        ctx.globalAlpha = 0.7;
+        ctx.drawImage(img, topLeft.x, topLeft.y, tileWidth, tileHeight);
+        ctx.globalAlpha = 1.0;
     }
 }
 

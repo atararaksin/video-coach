@@ -131,6 +131,16 @@
                     <canvas id="gpsCanvas" width="800" height="600"></canvas>
                 </div>
                 <div class="gps-controls">
+                    <div class="gps-layer-controls">
+                        <label for="layerSelect">Map Layer:</label>
+                        <select id="layerSelect" class="layer-select">
+                            <option value="satellite">Satellite</option>
+                            <option value="osm">OpenStreetMap</option>
+                            <option value="terrain">Terrain</option>
+                            <option value="none">Track Only</option>
+                        </select>
+                        <button id="refreshMap" class="refresh-btn">Refresh Map</button>
+                    </div>
                     <div class="gps-legend">
                         <div class="legend-item">
                             <span class="legend-color track-color"></span>
