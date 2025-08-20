@@ -649,3 +649,75 @@ header p {
         justify-content: center;
     }
 }
+
+/* Delta Bar Styles */
+.delta-bar-container {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 400px;
+    z-index: 10;
+}
+
+.delta-bar-background {
+    position: relative;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 20px;
+    border: 2px solid #333;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.delta-bar-center-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #fff;
+    transform: translateX(-50%);
+    z-index: 3;
+}
+
+.delta-bar-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: #52c41a;
+    transition: all 0.1s ease-out;
+    z-index: 1;
+}
+
+.delta-bar-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    z-index: 4;
+    pointer-events: none;
+}
+
+/* Delta bar responsive design */
+@media (max-width: 768px) {
+    .delta-bar-container {
+        width: 90%;
+        max-width: 300px;
+        top: 5px;
+    }
+    
+    .delta-bar-background {
+        height: 35px;
+    }
+    
+    .delta-bar-text {
+        font-size: 12px;
+    }
+}

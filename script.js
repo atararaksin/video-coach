@@ -53,6 +53,11 @@ class VideoFrameAnalyzer {
         this.altitudeValue = document.getElementById('altitudeValue');
         this.diffValue = document.getElementById('diffValue');
         
+        // Delta bar elements
+        this.deltaBarContainer = document.getElementById('deltaBarContainer');
+        this.deltaBarFill = document.getElementById('deltaBarFill');
+        this.deltaBarText = document.getElementById('deltaBarText');
+        
         // GPS visualization elements
         this.gpsSection = document.getElementById('gpsSection');
         this.gpsCanvas = document.getElementById('gpsCanvas');
@@ -483,6 +488,9 @@ class VideoFrameAnalyzer {
             // No data - default color
             this.diffValue.style.color = '#666';
         }
+        
+        // Update delta bar
+        this.updateDeltaBar(diffValue);
     }
 
     showCsvInfo(message, type = 'info') {
@@ -697,6 +705,11 @@ class VideoFrameAnalyzer {
         
         // Show telemetry display now that we're synced (moved outside the if/else)
         this.telemetryDisplay.style.display = 'block';
+        
+        // Show delta bar if we have diff data
+        if (this.diffToBestData.some(d => d !== null)) {
+            this.deltaBarContainer.style.display = 'block';
+        }
         
         // Update table row selection visual
         const rows = this.lapTableBody.querySelectorAll('tr');
@@ -1858,6 +1871,63 @@ class VideoFrameAnalyzer {
         } else {
             // For diffs < 1 second, show as milliseconds with 3 decimal places
             return `${sign}${absSeconds.toFixed(3)}`;
+        }
+    }
+
+    updateDeltaBar(diffValue) {
+        if (!this.deltaBarFill || !this.deltaBarText) {
+            return;
+        }
+
+        // Update the text display
+        this.deltaBarText.textContent = this.formatDiffTime(diffValue);
+
+        // Handle null/undefined/NaN values
+        if (diffValue === null || diffValue === undefined || isNaN(diffValue)) {
+            // No data - show empty bar
+            this.deltaBarFill.style.width = '0%';
+            this.deltaBarFill.style.left = '50%';
+            this.deltaBarFill.style.background = '#666';
+            return;
+        }
+
+        // Clamp diff value to range [-2, 2] seconds
+        const maxDiff = 2.0;
+        const clampedDiff = Math.max(-maxDiff, Math.min(maxDiff, diffValue));
+        
+        // Calculate bar properties using logarithmic scale
+        // We want: 0.5s -> 50% of bar, 2.0s -> 100% of bar
+        // Using formula: barPercent = log(1 + abs(diff) * scaleFactor) / log(1 + maxDiff * scaleFactor)
+        // Where scaleFactor is chosen so that 0.5s gives us 0.5 (50%)
+        
+        const absDiff = Math.abs(clampedDiff);
+        if (absDiff === 0) {
+            // Equal to best lap - thin blue bar at center
+            this.deltaBarFill.style.left = '49%';
+            this.deltaBarFill.style.width = '2%';
+            this.deltaBarFill.style.background = '#1890ff';
+            return;
+        }
+        
+        // Calculate scale factor so that 0.5s maps to 50% of the bar
+        // We want: log(1 + 0.5 * scaleFactor) / log(1 + 2.0 * scaleFactor) = 0.5
+        // Solving: log(1 + 0.5 * scaleFactor) = 0.5 * log(1 + 2.0 * scaleFactor)
+        // This gives us scaleFactor ≈ 3.0
+        const scaleFactor = 3.0;
+        
+        const logPercent = Math.log(1 + absDiff * scaleFactor) / Math.log(1 + maxDiff * scaleFactor);
+        const barWidth = logPercent * 50; // 0% to 50% of total width
+        
+        if (clampedDiff < 0) {
+            // Ahead of best lap (good) - green bar extending right from center
+            this.deltaBarFill.style.left = '50%';
+            this.deltaBarFill.style.width = `${barWidth}%`;
+            this.deltaBarFill.style.background = '#52c41a';
+        } else if (clampedDiff > 0) {
+            // Behind best lap (bad) - red bar extending left from center
+            this.deltaBarFill.style.left = `${50 - barWidth}%`;
+            this.deltaBarFill.style.width = `${barWidth}%`;
+            this.deltaBarFill.style.background = '#ff4d4f';
         }
     }
 }
