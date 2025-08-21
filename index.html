@@ -119,6 +119,21 @@
                                 </div>
                             </div>
 
+                            <!-- GPS Speed Graph -->
+                            <div class="speed-graph-container" id="speedGraphContainer" style="display: none;">
+                                <div class="speed-graph-header">
+                                    <h4>GPS Speed</h4>
+                                    <div class="speed-graph-controls">
+                                        <span class="speed-graph-range" id="speedGraphRange">0-200 km/h</span>
+                                    </div>
+                                </div>
+                                <canvas id="speedGraphCanvas" width="800" height="150"></canvas>
+                                <div class="speed-graph-timeline">
+                                    <span class="timeline-start">0:00</span>
+                                    <span class="timeline-end" id="timelineEnd">0:00</span>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>

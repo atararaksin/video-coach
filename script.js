@@ -68,6 +68,16 @@ class VideoFrameAnalyzer {
         this.currentMapLayer = 'satellite';
         this.tileCache = new Map(); // Cache for map tiles
         this.loadingTiles = new Set(); // Track tiles being loaded
+        
+        // Speed graph elements
+        this.speedGraphContainer = document.getElementById('speedGraphContainer');
+        this.speedGraphCanvas = document.getElementById('speedGraphCanvas');
+        this.speedGraphCtx = this.speedGraphCanvas ? this.speedGraphCanvas.getContext('2d') : null;
+        this.speedGraphRange = document.getElementById('speedGraphRange');
+        this.timelineEnd = document.getElementById('timelineEnd');
+        this.speedGraphVisible = false;
+        this.speedGraphData = []; // Processed speed data for current lap
+        this.speedGraphTimeWindow = 30; // Show 30 seconds of data
     }
 
     bindEvents() {
@@ -79,6 +89,10 @@ class VideoFrameAnalyzer {
         this.video.addEventListener('loadedmetadata', () => this.handleVideoLoaded());
         this.video.addEventListener('timeupdate', () => this.handleTimeUpdate());
         this.video.addEventListener('loadeddata', () => this.estimateFrameRate());
+        this.video.addEventListener('play', () => this.startHighFrequencyUpdates());
+        this.video.addEventListener('pause', () => this.stopHighFrequencyUpdates());
+        this.video.addEventListener('seeking', () => this.handleSeeking());
+        this.video.addEventListener('seeked', () => this.handleSeeked());
         
         // Frame control events
         this.prevFrameBtn.addEventListener('click', () => this.previousFrame());
@@ -94,6 +108,12 @@ class VideoFrameAnalyzer {
         if (this.refreshMapBtn) {
             this.refreshMapBtn.addEventListener('click', () => this.refreshGpsVisualization());
         }
+        
+        // Initialize high-frequency update system
+        this.isHighFrequencyActive = false;
+        this.animationFrameId = null;
+        this.lastUpdateTime = 0;
+        this.updateInterval = 1000 / 60; // Target 60 FPS updates
     }
 
     handleFileSelect(event) {
@@ -146,7 +166,10 @@ class VideoFrameAnalyzer {
     handleTimeUpdate() {
         this.updateCurrentTime();
         this.updateCurrentFrame();
-        this.updateTelemetryDisplay();
+        // Only update telemetry if high-frequency updates are not active
+        if (!this.isHighFrequencyActive) {
+            this.updateTelemetryDisplay();
+        }
     }
 
     estimateFrameRate() {
@@ -504,6 +527,12 @@ class VideoFrameAnalyzer {
         
         // Update delta bar
         this.updateDeltaBar(diffValue);
+        
+        // Update speed graph if visible - always update for moving window
+        if (this.speedGraphVisible) {
+            this.prepareSpeedGraphData();
+            this.drawSpeedGraph();
+        }
     }
 
     showCsvInfo(message, type = 'info') {
@@ -724,6 +753,9 @@ class VideoFrameAnalyzer {
             this.deltaBarContainer.style.display = 'block';
         }
         
+        // Show speed graph
+        this.showSpeedGraph();
+        
         // Update table row selection visual
         const rows = this.lapTableBody.querySelectorAll('tr');
         rows.forEach((row, index) => {
@@ -799,6 +831,408 @@ class VideoFrameAnalyzer {
         }, 1000);
         
         console.log(`Jumped to ${lapIndex === 0 ? 'Out Lap' : `Lap ${lapIndex}`} start: video time ${this.formatTime(clampedTime)}`);
+    }
+
+    showSpeedGraph() {
+        if (!this.speedGraphContainer || !this.speedGraphCanvas || !this.speedGraphCtx) {
+            console.log('Speed graph elements not found');
+            return;
+        }
+
+        if (!this.telemetryData.length) {
+            console.log('No telemetry data available for speed graph');
+            return;
+        }
+
+        // Show the speed graph container
+        this.speedGraphContainer.style.display = 'block';
+        this.speedGraphVisible = true;
+
+        // Prepare speed data for the current lap or all data
+        this.prepareSpeedGraphData();
+
+        // Set up canvas size
+        this.setupSpeedGraphCanvas();
+
+        // Draw the initial graph
+        this.drawSpeedGraph();
+
+        console.log('Speed graph displayed');
+    }
+
+    prepareSpeedGraphData() {
+        if (!this.telemetryData.length || this.syncOffset === 0) {
+            this.speedGraphData = [];
+            this.bestLapSpeedGraphData = [];
+            return;
+        }
+
+        // Calculate current telemetry time
+        const currentTelemetryTime = this.video.currentTime - this.syncOffset;
+        
+        // Define 20-second window: 10 seconds before and 10 seconds after current time
+        const windowSize = 20; // seconds
+        const halfWindow = windowSize / 2;
+        const windowStartTime = currentTelemetryTime - halfWindow;
+        const windowEndTime = currentTelemetryTime + halfWindow;
+
+        // Filter current telemetry data to the 20-second window
+        this.speedGraphData = this.telemetryData
+            .filter(point => point.time >= windowStartTime && point.time <= windowEndTime)
+            .map(point => ({
+                time: point.time,
+                speed: point.speed
+            }));
+
+        // Prepare best lap reference data aligned by GPS position (not time)
+        this.bestLapSpeedGraphData = [];
+        if (this.bestLapData && this.bestLapData.length > 0 && this.bestLapIndex !== -1 && this.speedGraphData.length > 0) {
+            // For each point in the current window, find the corresponding GPS position in the best lap
+            this.bestLapSpeedGraphData = this.speedGraphData.map(currentPoint => {
+                // Find the current telemetry point with GPS data
+                const currentTelemetryPoint = this.telemetryData.find(point => 
+                    Math.abs(point.time - currentPoint.time) < 0.1
+                );
+                
+                if (!currentTelemetryPoint || !currentTelemetryPoint.lat || !currentTelemetryPoint.lon) {
+                    return null; // No GPS data for this point
+                }
+                
+                // Find the closest GPS position in the best lap data
+                const correspondingBestLapPoint = this.findClosestGpsPosition(
+                    currentTelemetryPoint, 
+                    this.bestLapData
+                );
+                
+                if (correspondingBestLapPoint) {
+                    return {
+                        time: currentPoint.time, // Use current lap time for x-axis alignment
+                        speed: correspondingBestLapPoint.speed
+                    };
+                }
+                
+                return null;
+            }).filter(point => point !== null); // Remove null entries
+        }
+
+        console.log(`Speed graph showing 20s window: ${this.formatTime(windowStartTime)} to ${this.formatTime(windowEndTime)} (${this.speedGraphData.length} current + ${this.bestLapSpeedGraphData.length} reference points)`);
+
+        // Update timeline to show the window duration
+        if (this.timelineEnd) {
+            this.timelineEnd.textContent = `${windowSize}s`;
+        }
+
+        // Update speed range display based on current window data (include both current and reference data)
+        if (this.speedGraphRange && (this.speedGraphData.length > 0 || this.bestLapSpeedGraphData.length > 0)) {
+            const allSpeeds = [
+                ...this.speedGraphData.map(d => d.speed),
+                ...this.bestLapSpeedGraphData.map(d => d.speed)
+            ];
+            const minSpeed = Math.min(...allSpeeds);
+            const maxSpeed = Math.max(...allSpeeds);
+            const roundedMax = Math.ceil(maxSpeed / 10) * 10; // Round up to nearest 10
+            this.speedGraphRange.textContent = `0-${roundedMax} km/h`;
+        } else if (this.speedGraphRange) {
+            // Fallback when no data in window
+            this.speedGraphRange.textContent = `0-200 km/h`;
+        }
+
+        // Store current window bounds for other methods
+        this.currentWindowStartTime = windowStartTime;
+        this.currentWindowEndTime = windowEndTime;
+    }
+
+    getCurrentLapIndex() {
+        if (!this.video || this.syncOffset === 0 || !this.lapStartTimes.length) {
+            return -1;
+        }
+
+        const telemetryTime = this.video.currentTime - this.syncOffset;
+        
+        // Find which lap the current telemetry time falls into
+        for (let i = 0; i < this.lapStartTimes.length; i++) {
+            const lapStartTime = this.lapStartTimes[i];
+            const lapEndTime = i < this.lapStartTimes.length - 1 ? 
+                this.lapStartTimes[i + 1] : 
+                lapStartTime + this.lapTimes[i];
+            
+            if (telemetryTime >= lapStartTime && telemetryTime <= lapEndTime) {
+                return i;
+            }
+        }
+        
+        return -1;
+    }
+
+    setupSpeedGraphCanvas() {
+        const canvas = this.speedGraphCanvas;
+        const rect = canvas.getBoundingClientRect();
+        
+        // Set canvas size to match CSS size for crisp rendering
+        canvas.width = rect.width * window.devicePixelRatio;
+        canvas.height = rect.height * window.devicePixelRatio;
+        
+        // Scale the context to match device pixel ratio
+        this.speedGraphCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        
+        // Set canvas CSS size
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+    }
+
+    drawSpeedGraph() {
+        if (!this.speedGraphData.length && !this.bestLapSpeedGraphData.length) return;
+
+        const canvas = this.speedGraphCanvas;
+        const ctx = this.speedGraphCtx;
+        const width = canvas.width / window.devicePixelRatio;
+        const height = canvas.height / window.devicePixelRatio;
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+
+        // Calculate data bounds from both current and reference data
+        const allSpeeds = [
+            ...this.speedGraphData.map(d => d.speed),
+            ...this.bestLapSpeedGraphData.map(d => d.speed)
+        ];
+        const allTimes = [
+            ...this.speedGraphData.map(d => d.time),
+            ...this.bestLapSpeedGraphData.map(d => d.time)
+        ];
+
+        if (allSpeeds.length === 0 || allTimes.length === 0) return;
+
+        const minSpeed = 0; // Always start from 0
+        const maxSpeed = Math.max(...allSpeeds);
+        const minTime = Math.min(...allTimes);
+        const maxTime = Math.max(...allTimes);
+
+        // Add padding
+        const padding = { top: 20, right: 20, bottom: 20, left: 50 };
+        const graphWidth = width - padding.left - padding.right;
+        const graphHeight = height - padding.top - padding.bottom;
+
+        // Helper functions for coordinate conversion
+        const timeToX = (time) => padding.left + ((time - minTime) / (maxTime - minTime)) * graphWidth;
+        const speedToY = (speed) => padding.top + ((maxSpeed - speed) / (maxSpeed - minSpeed)) * graphHeight;
+
+        // Draw grid lines
+        this.drawSpeedGraphGrid(ctx, padding, graphWidth, graphHeight, minSpeed, maxSpeed, minTime, maxTime);
+
+        // Draw best lap reference line (purple, behind current line)
+        if (this.bestLapSpeedGraphData.length > 0) {
+            ctx.strokeStyle = '#722ed1'; // Purple color
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]); // Dashed line to distinguish from current
+            ctx.beginPath();
+
+            for (let i = 0; i < this.bestLapSpeedGraphData.length; i++) {
+                const point = this.bestLapSpeedGraphData[i];
+                const x = timeToX(point.time);
+                const y = speedToY(point.speed);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset dash pattern
+        }
+
+        // Draw current speed line (blue, on top)
+        if (this.speedGraphData.length > 0) {
+            ctx.strokeStyle = '#1890ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            for (let i = 0; i < this.speedGraphData.length; i++) {
+                const point = this.speedGraphData[i];
+                const x = timeToX(point.time);
+                const y = speedToY(point.speed);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        // Draw current position indicator if video is synced
+        if (this.syncOffset !== 0 && this.video) {
+            this.drawCurrentPositionIndicator(ctx, timeToX, speedToY, minTime, maxTime);
+        }
+
+        // Draw lap markers if we have lap data
+        this.drawLapMarkers(ctx, timeToX, padding.top, graphHeight, minTime, maxTime);
+    }
+
+    drawSpeedGraphGrid(ctx, padding, graphWidth, graphHeight, minSpeed, maxSpeed, minTime, maxTime) {
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#666';
+
+        // Horizontal grid lines (speed)
+        const speedStep = Math.ceil((maxSpeed - minSpeed) / 5 / 10) * 10; // Round to nearest 10
+        for (let speed = minSpeed; speed <= maxSpeed; speed += speedStep) {
+            const y = padding.top + ((maxSpeed - speed) / (maxSpeed - minSpeed)) * graphHeight;
+            
+            // Grid line
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(padding.left + graphWidth, y);
+            ctx.stroke();
+            
+            // Label
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${speed}`, padding.left - 5, y);
+        }
+
+        // Vertical grid lines (time)
+        const timeRange = maxTime - minTime;
+        const timeStep = timeRange > 300 ? 60 : timeRange > 120 ? 30 : timeRange > 60 ? 15 : 10; // Adaptive time step
+        
+        for (let time = Math.ceil(minTime / timeStep) * timeStep; time <= maxTime; time += timeStep) {
+            const x = padding.left + ((time - minTime) / (maxTime - minTime)) * graphWidth;
+            
+            // Grid line
+            ctx.beginPath();
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + graphHeight);
+            ctx.stroke();
+            
+            // Label
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(this.formatTime(time), x, padding.top + graphHeight + 5);
+        }
+    }
+
+    drawCurrentPositionIndicator(ctx, timeToX, speedToY, minTime, maxTime) {
+        const telemetryTime = this.video.currentTime - this.syncOffset;
+        
+        console.log(`drawCurrentPositionIndicator: telemetryTime=${telemetryTime}, minTime=${minTime}, maxTime=${maxTime}`);
+        
+        if (telemetryTime >= minTime && telemetryTime <= maxTime && this.speedGraphData.length > 0) {
+            const x = timeToX(telemetryTime);
+            
+            // Find current speed from the current lap's speed data
+            let currentSpeed = 0;
+            let closestIndex = 0;
+            let minDiff = Math.abs(this.speedGraphData[0].time - telemetryTime);
+            
+            for (let i = 1; i < this.speedGraphData.length; i++) {
+                const diff = Math.abs(this.speedGraphData[i].time - telemetryTime);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = i;
+                } else {
+                    break;
+                }
+            }
+            
+            currentSpeed = this.speedGraphData[closestIndex].speed;
+            const y = speedToY(currentSpeed);
+            
+            console.log(`Drawing position indicator at x=${x}, y=${y}, speed=${currentSpeed}`);
+            
+            // Draw vertical line
+            ctx.strokeStyle = '#ff4d4f';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(x, 20);
+            ctx.lineTo(x, ctx.canvas.height / window.devicePixelRatio - 20);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw current position dot
+            ctx.fillStyle = '#ff4d4f';
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw white outline for better visibility
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            // Draw speed value
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const text = `${Math.round(currentSpeed)} km/h`;
+            const textWidth = ctx.measureText(text).width;
+            const textHeight = 16;
+            
+            // Background
+            ctx.fillStyle = '#ff4d4f';
+            ctx.fillRect(x - textWidth/2 - 4, y - textHeight/2 - 20, textWidth + 8, textHeight + 4);
+            
+            // Text
+            ctx.fillStyle = '#fff';
+            ctx.fillText(text, x, y - 16);
+        } else {
+            console.log('Position indicator not drawn - conditions not met');
+        }
+    }
+
+    drawLapMarkers(ctx, timeToX, graphTop, graphHeight, minTime, maxTime) {
+        // Draw sector borders that fall within the 20-second moving window
+        if (!this.sectorBorders.length) {
+            return;
+        }
+
+        ctx.strokeStyle = '#ff4d4f';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#ff4d4f';
+
+        let sectorsDrawn = 0;
+        for (let i = 0; i < this.sectorBorders.length; i++) {
+            const border = this.sectorBorders[i];
+            const sectorTime = border.time;
+            
+            // Check if this sector border falls within the current 20-second window
+            if (sectorTime >= minTime && sectorTime <= maxTime) {
+                const x = timeToX(sectorTime);
+                
+                // Draw vertical line
+                ctx.beginPath();
+                ctx.moveTo(x, graphTop);
+                ctx.lineTo(x, graphTop + graphHeight);
+                ctx.stroke();
+                
+                // Draw sector label with background
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const sectorLabel = `S${i + 1}`;
+                
+                // Draw label background
+                ctx.fillStyle = '#ff4d4f';
+                ctx.fillRect(x - 15, graphTop + 5, 30, 20);
+                
+                // Draw label text
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(sectorLabel, x, graphTop + 15);
+                
+                // Reset fill style
+                ctx.fillStyle = '#ff4d4f';
+                sectorsDrawn++;
+            }
+        }
+        
+        ctx.setLineDash([]);
     }
 
     generateSectorSplits() {
@@ -1862,6 +2296,53 @@ class VideoFrameAnalyzer {
         }
     }
 
+    findClosestGpsPosition(currentPoint, bestLapData) {
+        if (!currentPoint.lat || !currentPoint.lon || !bestLapData.length) {
+            return null;
+        }
+
+        let closestPoint = null;
+        let minDistance = Infinity;
+
+        // Find the point in best lap data with the closest GPS coordinates
+        for (const bestLapPoint of bestLapData) {
+            if (!bestLapPoint.lat || !bestLapPoint.lon) {
+                continue;
+            }
+
+            // Calculate distance using Haversine formula for accuracy
+            const distance = this.calculateGpsDistance(
+                currentPoint.lat, currentPoint.lon,
+                bestLapPoint.lat, bestLapPoint.lon
+            );
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestPoint = bestLapPoint;
+            }
+        }
+
+        // Only return if we found a reasonably close point (within 50 meters)
+        if (closestPoint && minDistance < 0.05) { // 50 meters in km
+            return closestPoint;
+        }
+
+        return null;
+    }
+
+    calculateGpsDistance(lat1, lon1, lat2, lon2) {
+        // Haversine formula to calculate distance between two GPS points
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c; // Distance in kilometers
+    }
+
     findCorrespondingTimeInBestLap(currentPoint, currentLapProgress) {
         if (!currentPoint.lat || !currentPoint.lon || this.bestLapData.length === 0) {
             return null;
@@ -2170,6 +2651,64 @@ class VideoFrameAnalyzer {
         ctx.globalAlpha = 0.7;
         ctx.drawImage(img, topLeft.x, topLeft.y, tileWidth, tileHeight);
         ctx.globalAlpha = 1.0;
+    }
+
+    // High-frequency update methods for smoother telemetry
+    startHighFrequencyUpdates() {
+        if (this.isHighFrequencyActive) return;
+        
+        this.isHighFrequencyActive = true;
+        this.lastUpdateTime = performance.now();
+        this.highFrequencyUpdate();
+        
+        console.log('Started high-frequency telemetry updates (60 FPS)');
+    }
+
+    stopHighFrequencyUpdates() {
+        if (!this.isHighFrequencyActive) return;
+        
+        this.isHighFrequencyActive = false;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
+        console.log('Stopped high-frequency telemetry updates');
+    }
+
+    highFrequencyUpdate() {
+        if (!this.isHighFrequencyActive) return;
+        
+        const currentTime = performance.now();
+        const deltaTime = currentTime - this.lastUpdateTime;
+        
+        // Update at target interval (60 FPS = ~16.67ms)
+        if (deltaTime >= this.updateInterval) {
+            this.updateTelemetryDisplay();
+            this.lastUpdateTime = currentTime;
+        }
+        
+        // Schedule next update
+        this.animationFrameId = requestAnimationFrame(() => this.highFrequencyUpdate());
+    }
+
+    handleSeeking() {
+        // Temporarily stop high-frequency updates during seeking for performance
+        if (this.isHighFrequencyActive) {
+            this.stopHighFrequencyUpdates();
+            this.wasHighFrequencyActiveBeforeSeeking = true;
+        }
+    }
+
+    handleSeeked() {
+        // Resume high-frequency updates after seeking if video is playing
+        if (this.wasHighFrequencyActiveBeforeSeeking && !this.video.paused) {
+            this.startHighFrequencyUpdates();
+        }
+        this.wasHighFrequencyActiveBeforeSeeking = false;
+        
+        // Force immediate telemetry update after seeking
+        this.updateTelemetryDisplay();
     }
 }
 
