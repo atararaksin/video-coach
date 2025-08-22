@@ -3,178 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Frame Analyzer</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Telemetry Data Parser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .session-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .lap-info {
+            background: #e9ecef;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .data-item {
+            background: white;
+            padding: 10px;
+            border-radius: 3px;
+            border: 1px solid #dee2e6;
+        }
+        .data-item strong {
+            display: block;
+            color: #495057;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Video Frame Analyzer</h1>
-            <p>Select a video file to play and analyze frames</p>
-        </header>
-
-        <main>
-            <!-- File Selection Section -->
-            <section class="file-section">
-                <div class="file-inputs">
-                    <div class="file-input-wrapper">
-                        <input type="file" id="videoFile" accept="video/mp4,video/*" class="file-input">
-                        <label for="videoFile" class="file-label">
-                            <span class="file-icon">🎥</span>
-                            Choose Video File
-                        </label>
-                    </div>
-                    <div class="file-input-wrapper">
-                        <input type="file" id="csvFile" accept=".csv" class="file-input">
-                        <label for="csvFile" class="file-label csv-label">
-                            <span class="file-icon">📊</span>
-                            Choose CSV Data Log
-                        </label>
-                    </div>
-                </div>
-                <div class="file-info" id="fileInfo"></div>
-                <div class="csv-info" id="csvInfo" style="display: none;"></div>
-                
-                <!-- Main Content Area with Table and Video Side by Side -->
-                <div class="main-content-area" id="mainContentArea" style="display: none;">
-                    <!-- Left Side: Lap Selection Table -->
-                    <div class="left-panel">
-                        <div class="lap-selection" id="lapSelection">
-                            <h3>Lap Data & Synchronization</h3>
-                            <p>Use sync (🔗) to establish timing, jump (⏭️) to navigate to lap starts:</p>
-                            <div class="lap-table-container">
-                                <table class="lap-table" id="lapTable">
-                                    <thead>
-                                        <tr>
-                                            <th>Lap #</th>
-                                            <th>Lap Time</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="lapTableBody">
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right Side: Video Player -->
-                    <div class="right-panel">
-                        <div class="video-section" id="videoSection">
-                            <div class="video-container">
-                                <video id="videoPlayer" controls preload="metadata">
-                                    Your browser does not support the video tag.
-                                </video>
-                                <!-- Delta Bar -->
-                                <div class="delta-bar-container" id="deltaBarContainer" style="display: none;">
-                                    <div class="delta-bar-background">
-                                        <div class="delta-bar-center-line"></div>
-                                        <div class="delta-bar-fill" id="deltaBarFill"></div>
-                                        <div class="delta-bar-text" id="deltaBarText">+0.000</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Video Controls and Info -->
-                            <div class="video-controls">
-                                <div class="video-info">
-                                    <span id="currentTime">00:00</span>
-                                    <span class="separator">/</span>
-                                    <span id="duration">00:00</span>
-                                    <span class="frame-info">
-                                        Frame: <span id="currentFrame">0</span>
-                                    </span>
-                                    <div class="telemetry-display" id="telemetryDisplay" style="display: none;">
-                                        <div class="telemetry-item speed-display">
-                                            <span class="telemetry-label">GPS Speed</span>
-                                            <span class="telemetry-value" id="speedValue">0</span>
-                                            <span class="telemetry-unit">km/h</span>
-                                        </div>
-                                        <div class="telemetry-item latacc-display">
-                                            <span class="telemetry-label">Lat Acc</span>
-                                            <span class="telemetry-value" id="latAccValue">0.0</span>
-                                            <span class="telemetry-unit">g</span>
-                                        </div>
-                                        <div class="telemetry-item lonacc-display">
-                                            <span class="telemetry-label">Lon Acc</span>
-                                            <span class="telemetry-value" id="lonAccValue">0.0</span>
-                                            <span class="telemetry-unit">g</span>
-                                        </div>
-                                        <div class="telemetry-item altitude-display">
-                                            <span class="telemetry-label">Altitude</span>
-                                            <span class="telemetry-value" id="altitudeValue">0</span>
-                                            <span class="telemetry-unit">m</span>
-                                        </div>
-                                        <div class="telemetry-item diff-display">
-                                            <span class="telemetry-label">Diff to Best</span>
-                                            <span class="telemetry-value" id="diffValue">+0.000</span>
-                                            <span class="telemetry-unit">s</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="frame-controls">
-                                    <button id="prevFrame" class="frame-btn" title="Previous Frame">⏮</button>
-                                    <button id="nextFrame" class="frame-btn" title="Next Frame">⏭</button>
-                                </div>
-                            </div>
-
-                            <!-- GPS Speed Graph -->
-                            <div class="speed-graph-container" id="speedGraphContainer" style="display: none;">
-                                <div class="speed-graph-header">
-                                    <h4>GPS Speed</h4>
-                                    <div class="speed-graph-controls">
-                                        <span class="speed-graph-range" id="speedGraphRange">0-200 km/h</span>
-                                    </div>
-                                </div>
-                                <canvas id="speedGraphCanvas" width="800" height="150"></canvas>
-                                <div class="speed-graph-timeline">
-                                    <span class="timeline-start">0:00</span>
-                                    <span class="timeline-end" id="timelineEnd">0:00</span>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- GPS Visualization Section -->
-            <section class="gps-section" id="gpsSection" style="display: none;">
-                <h3>GPS Track Visualization</h3>
-                <div class="gps-container">
-                    <canvas id="gpsCanvas" width="800" height="600"></canvas>
-                </div>
-                <div class="gps-controls">
-                    <div class="gps-layer-controls">
-                        <label for="layerSelect">Map Layer:</label>
-                        <select id="layerSelect" class="layer-select">
-                            <option value="satellite">Satellite</option>
-                            <option value="osm">OpenStreetMap</option>
-                            <option value="terrain">Terrain</option>
-                            <option value="none">Track Only</option>
-                        </select>
-                        <button id="refreshMap" class="refresh-btn">Refresh Map</button>
-                    </div>
-                    <div class="gps-legend">
-                        <div class="legend-item">
-                            <span class="legend-color track-color"></span>
-                            <span>GPS Track</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-color sector-color"></span>
-                            <span>Sector Borders</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-color start-color"></span>
-                            <span>Start/Finish</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
+    <h1>Telemetry Data Parser</h1>
+    
+    <div class="upload-area" id="uploadArea">
+        <h3>Upload CSV File</h3>
+        <p>Drag and drop a CSV file here or click to select</p>
+        <input type="file" id="fileInput" accept=".csv" class="file-input">
     </div>
 
-    <script src="script.js"></script>
+    <div id="sessionData" style="display: none;">
+        <h2>Session Information</h2>
+        <div id="sessionInfo" class="session-info"></div>
+        
+        <h2>Lap Data</h2>
+        <div id="lapData"></div>
+    </div>
+
+    <script type="module" src="dist/main.js"></script>
 </body>
 </html>
