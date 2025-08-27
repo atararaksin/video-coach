@@ -1,5 +1,6 @@
 import { Session, LapData } from './types.js';
 import { TelemetryCSVParser } from './csvParser.js';
+import { calculateSectorTimes, splitIntoSectors } from './sectorUtils.js';
 
 // UI Handler for CSV File Upload
 class CSVUploadHandler {
@@ -55,6 +56,10 @@ class CSVUploadHandler {
         try {
             const text = await this.readFileAsText(file);
             const session = this.parser.parseCSV(text);
+            const sectorSplits = splitIntoSectors(session.laps[session.bestLapIndex].datapoints);
+            for (let lap of session.laps) {
+                lap.sectorTimes = calculateSectorTimes(lap.datapoints, sectorSplits, lap.lapTime);
+            }
             this.displaySession(session);
         } catch (error) {
             console.error('Error parsing CSV:', error);
@@ -115,6 +120,16 @@ class CSVUploadHandler {
                 ? Math.max(...lap.datapoints.map(point => point.data.get("GPS Speed"))).toFixed(2)
                 : '0.00';
 
+            // Generate sector times display
+            const sectorTimesHtml = lap.sectorTimes && lap.sectorTimes.length > 0 
+                ? lap.sectorTimes.map((time, index) => `
+                    <div class="data-item">
+                        <strong>S${index + 1}</strong>
+                        ${time.toFixed(3)}s
+                    </div>
+                `).join('')
+                : '';
+
             lapDiv.innerHTML = `
                 <h3>Lap ${lap.lapIndex}</h3>
                 <div class="data-grid">
@@ -134,6 +149,7 @@ class CSVUploadHandler {
                         <strong>Max Speed</strong>
                         ${maxSpeed} km/h
                     </div>
+                    ${sectorTimesHtml}
                 </div>
             `;
             

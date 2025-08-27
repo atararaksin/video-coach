@@ -1,0 +1,380 @@
+import { Datapoint, Point } from "./types.js";
+import { findClosestDatapointIndex as findClosestDatapointByGPS, calculateDistance } from "./gpsUtils.js";
+
+export function calculateSectorTimes(datapoints: Datapoint[], sectorSplits: Point[], lapTime: number): number[] {
+    if (sectorSplits.length < 2) {
+        throw new Error('At least 2 sector splits are required (start and one split point)');
+    }
+    
+    if (datapoints.length === 0) {
+        throw new Error('Datapoints array cannot be empty');
+    }
+
+    const sectorTimes: number[] = [];
+    const splitTimes: number[] = [];
+
+    // Find the closest datapoint for each sector split and interpolate the exact time
+    for (let i = 0; i < sectorSplits.length; i++) {
+        const closestIndex = findClosestDatapointByGPS(datapoints, sectorSplits[i].lat, sectorSplits[i].lon);
+        const closestDatapoint = datapoints[closestIndex];
+        
+        // Calculate the exact time at the sector split using interpolation
+        let interpolatedTime: number;
+        
+        if (closestIndex === 0) {
+            // If it's the first datapoint, use its time directly
+            interpolatedTime = closestDatapoint.time;
+        } else if (closestIndex === datapoints.length - 1) {
+            // If it's the last datapoint, use its time directly
+            interpolatedTime = closestDatapoint.time;
+        } else {
+            // Interpolate between the closest datapoint and its neighbors
+            const prevDatapoint = datapoints[closestIndex - 1];
+            const nextDatapoint = datapoints[closestIndex + 1];
+            
+            // Calculate distances to determine which neighbor to use for interpolation
+            const distToPrev = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, prevDatapoint.lat, prevDatapoint.lon);
+            const distToNext = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, nextDatapoint.lat, nextDatapoint.lon);
+            
+            // Choose the pair of datapoints that bracket the sector split
+            let point1: Datapoint, point2: Datapoint;
+            
+            if (distToPrev < distToNext) {
+                // Interpolate between previous and current
+                point1 = prevDatapoint;
+                point2 = closestDatapoint;
+            } else {
+                // Interpolate between current and next
+                point1 = closestDatapoint;
+                point2 = nextDatapoint;
+            }
+            
+            // Linear interpolation based on distance ratios
+            const totalDist = calculateDistance(point1.lat, point1.lon, point2.lat, point2.lon);
+            const distFromPoint1 = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, point1.lat, point1.lon);
+            
+            if (totalDist === 0) {
+                interpolatedTime = point1.time;
+            } else {
+                const ratio = distFromPoint1 / totalDist;
+                interpolatedTime = point1.time + ratio * (point2.time - point1.time);
+            }
+        }
+        
+        splitTimes.push(interpolatedTime);
+    }
+
+    // Calculate sector times as differences between consecutive split times
+    for (let i = 1; i < splitTimes.length; i++) {
+        const sectorTime = splitTimes[i] - splitTimes[i - 1];
+        sectorTimes.push(sectorTime);
+    }
+
+    // Calculate the last sector time as the difference between total lap time 
+    // and the sum of all previous sector times
+    if (sectorTimes.length > 0) {
+        const sumOfPreviousSectors = sectorTimes.reduce((sum, time) => sum + time, 0);
+        const lastSectorTime = lapTime - sumOfPreviousSectors;
+        sectorTimes.push(lastSectorTime);
+    }
+
+    return sectorTimes;
+}
+
+// First point in the array is start of the lap
+export function splitIntoSectors(datapoints: Datapoint[]): Point[] {
+    if (datapoints.length < 2) {
+        return datapoints.map(dp => ({ lat: dp.lat, lon: dp.lon }));
+    }
+
+    // Step 1: Find deceleration periods
+    const decelerationPeriods = findDecelerationPeriods(datapoints);
+
+    console.log('Found decelleration periods:', decelerationPeriods);
+    
+    // Step 2: Find non-deceleration periods
+    const nonDecelerationPeriods = findNonDecelerationPeriods(datapoints, decelerationPeriods);
+    
+    // Step 3: Create initial split points
+    const splitPoints: number[] = [];
+    
+    for (const period of nonDecelerationPeriods) {
+        const duration = datapoints[period.end].time - datapoints[period.start].time;
+        //if (duration >= 3.0) {
+            // Find the next deceleration period to apply 0.3s margin
+            const nextDecelerationStart = findNextDecelerationStart(datapoints, period.end, decelerationPeriods);
+            let splitTime = datapoints[period.end].time;
+            
+            if (nextDecelerationStart !== -1) {
+                const marginTime = datapoints[nextDecelerationStart].time - 0.3;
+                splitTime = Math.min(splitTime, marginTime);
+            }
+            
+            // Find the closest datapoint to the split time
+            const splitIndex = findClosestDatapointIndex(datapoints, splitTime);
+            if (splitIndex > 0 && splitIndex < datapoints.length - 1) {
+                splitPoints.push(splitIndex);
+            }
+        //}
+    }
+    
+    // Remove duplicates and sort
+    const uniqueSplitPoints = [...new Set(splitPoints)].sort((a, b) => a - b);
+    
+    // Step 4: Merge sectors shorter than 4 seconds
+    const finalSplitPoints = mergeShortSectors(datapoints, uniqueSplitPoints);
+
+    // Step 5: Add the first datapoint as lap start
+    finalSplitPoints.unshift(0); // Insert at the start of array
+
+    
+    // Convert indices to Points
+    const points = finalSplitPoints.map(index => ({
+        lat: datapoints[index].lat,
+        lon: datapoints[index].lon
+    }));
+
+    console.log("Sector split points:", points);
+
+    return points;
+}
+
+interface Period {
+    start: number;
+    end: number;
+}
+
+function findDecelerationPeriods(datapoints: Datapoint[]): Period[] {
+    if (datapoints.length < 2) {
+        return [];
+    }
+
+    // Step 1: Sample down the dataset to have at least 0.2 seconds between datapoints
+    const sampledData: {
+        datapoint: Datapoint;
+        originalIndex: number;
+        aggregatedIndexes: number[];
+        averageSpeed: number;
+    }[] = [];
+
+    let currentSampleStart = 0;
+    sampledData.push({
+        datapoint: datapoints[0],
+        originalIndex: 0,
+        aggregatedIndexes: [0],
+        averageSpeed: datapoints[0].speed
+    });
+
+    for (let i = 1; i < datapoints.length; i++) {
+        const timeDiff = datapoints[i].time - sampledData[sampledData.length - 1].datapoint.time;
+        
+        if (timeDiff >= 0.2) {
+            // Create new sample point
+            const aggregatedIndexes: number[] = [];
+            let totalSpeed = 0;
+            
+            // Aggregate all points from last sample to current point
+            for (let j = currentSampleStart + 1; j <= i; j++) {
+                aggregatedIndexes.push(j);
+                totalSpeed += datapoints[j].speed;
+            }
+            
+            const averageSpeed = aggregatedIndexes.length > 0 ? totalSpeed / aggregatedIndexes.length : datapoints[i].speed;
+            
+            sampledData.push({
+                datapoint: datapoints[i],
+                originalIndex: i,
+                aggregatedIndexes: aggregatedIndexes,
+                averageSpeed: averageSpeed
+            });
+            
+            currentSampleStart = i;
+        }
+    }
+
+    // Step 2: Find deceleration periods in sampled data
+    const decelerationPeriods: Period[] = [];
+    const minDecelerationThreshold = -1.0; // - threshold for significant deceleration
+
+    for (let i = 1; i < sampledData.length; i++) {
+        const currentSample = sampledData[i];
+        const previousSample = sampledData[i - 1];
+        
+        const timeDiff = currentSample.datapoint.time - previousSample.datapoint.time;
+        const speedDiff = currentSample.averageSpeed - previousSample.averageSpeed;
+        
+        // Calculate deceleration (negative acceleration)
+        const acceleration = speedDiff / timeDiff;
+        
+        if (acceleration < minDecelerationThreshold) {
+            // Found start of deceleration period
+            let decelerationStart = i - 1;
+            let decelerationEnd = i;
+            
+            // Extend the deceleration period while acceleration remains negative
+            while (decelerationEnd + 1 < sampledData.length) {
+                const nextSample = sampledData[decelerationEnd + 1];
+                const nextTimeDiff = nextSample.datapoint.time - sampledData[decelerationEnd].datapoint.time;
+                const nextSpeedDiff = nextSample.averageSpeed - sampledData[decelerationEnd].averageSpeed;
+                const nextAcceleration = nextSpeedDiff / nextTimeDiff;
+                
+                if (nextAcceleration < 0) {
+                    decelerationEnd++;
+                } else {
+                    break;
+                }
+            }
+            
+            // Check if the deceleration period is long enough
+            const periodDuration = sampledData[decelerationEnd].datapoint.time - sampledData[decelerationStart].datapoint.time;
+            
+            // Map back to original datapoint indexes
+            const originalStartIndex = sampledData[decelerationStart].originalIndex;
+            let originalEndIndex = sampledData[decelerationEnd].originalIndex;
+            
+            // Include all aggregated points in the end sample
+            if (sampledData[decelerationEnd].aggregatedIndexes.length > 0) {
+                const lastAggregatedIndex = Math.max(...sampledData[decelerationEnd].aggregatedIndexes);
+                originalEndIndex = Math.max(originalEndIndex, lastAggregatedIndex);
+            }
+            
+            decelerationPeriods.push({
+                start: originalStartIndex,
+                end: originalEndIndex
+            });
+            
+            // Skip ahead to avoid overlapping periods
+            i = decelerationEnd;
+        }
+    }
+
+    // Step 3: Merge overlapping or adjacent deceleration periods
+    const mergedPeriods: Period[] = [];
+    
+    for (const period of decelerationPeriods) {
+        if (mergedPeriods.length === 0) {
+            mergedPeriods.push(period);
+        } else {
+            const lastPeriod = mergedPeriods[mergedPeriods.length - 1];
+            
+            // Check if periods overlap or are adjacent (within 1 second)
+            const timeBetween = datapoints[period.start].time - datapoints[lastPeriod.end].time;
+            
+            if (timeBetween <= 1.0) {
+                // Merge periods
+                lastPeriod.end = period.end;
+            } else {
+                mergedPeriods.push(period);
+            }
+        }
+    }
+
+    return mergedPeriods;
+}
+
+function findNonDecelerationPeriods(datapoints: Datapoint[], decelerationPeriods: Period[]): Period[] {
+    const nonDecelerationPeriods: Period[] = [];
+    let currentStart = 0;
+    
+    for (const decPeriod of decelerationPeriods) {
+        if (currentStart < decPeriod.start) {
+            nonDecelerationPeriods.push({ start: currentStart, end: decPeriod.start - 1 });
+        }
+        currentStart = decPeriod.end + 1;
+    }
+    
+    // Add final non-deceleration period if exists
+    if (currentStart < datapoints.length) {
+        nonDecelerationPeriods.push({ start: currentStart, end: datapoints.length - 1 });
+    }
+    
+    return nonDecelerationPeriods;
+}
+
+function findNextDecelerationStart(datapoints: Datapoint[], fromIndex: number, decelerationPeriods: Period[]): number {
+    for (const period of decelerationPeriods) {
+        if (period.start > fromIndex) {
+            return period.start;
+        }
+    }
+    return -1;
+}
+
+function findClosestDatapointIndex(datapoints: Datapoint[], targetTime: number): number {
+    let closestIndex = 0;
+    let minDiff = Math.abs(datapoints[0].time - targetTime);
+    
+    for (let i = 1; i < datapoints.length; i++) {
+        const diff = Math.abs(datapoints[i].time - targetTime);
+        if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = i;
+        }
+    }
+    
+    return closestIndex;
+}
+
+function mergeShortSectors(datapoints: Datapoint[], splitPoints: number[]): number[] {
+    if (splitPoints.length <= 1) return splitPoints;
+    
+    const sectors: { start: number; end: number; duration: number }[] = [];
+    let prevIndex = 0;
+    
+    for (const splitIndex of splitPoints) {
+        const duration = datapoints[splitIndex].time - datapoints[prevIndex].time;
+        sectors.push({ start: prevIndex, end: splitIndex, duration });
+        prevIndex = splitIndex;
+    }
+    
+    // Merge sectors shorter than 4 seconds
+    const finalSplitPoints: number[] = [];
+    let i = 0;
+    
+    while (i < sectors.length) {
+        if (sectors[i].duration < 4.0 && sectors.length > 1) {
+            // Find which adjacent sector is shorter to merge with
+            let mergeWithPrevious = false;
+            
+            if (i === 0) {
+                // First sector, merge with next
+                mergeWithPrevious = false;
+            } else if (i === sectors.length - 1) {
+                // Last sector, merge with previous
+                mergeWithPrevious = true;
+            } else {
+                // Middle sector, merge with shorter adjacent sector
+                const prevDuration = sectors[i - 1].duration;
+                const nextDuration = sectors[i + 1].duration;
+                mergeWithPrevious = prevDuration <= nextDuration;
+            }
+            
+            if (mergeWithPrevious && i > 0) {
+                // Merge with previous sector
+                sectors[i - 1].end = sectors[i].end;
+                sectors[i - 1].duration = datapoints[sectors[i - 1].end].time - datapoints[sectors[i - 1].start].time;
+                sectors.splice(i, 1);
+                i--; // Re-check the merged sector
+            } else if (!mergeWithPrevious && i < sectors.length - 1) {
+                // Merge with next sector
+                sectors[i + 1].start = sectors[i].start;
+                sectors[i + 1].duration = datapoints[sectors[i + 1].end].time - datapoints[sectors[i + 1].start].time;
+                sectors.splice(i, 1);
+                // Don't increment i, check the merged sector
+            } else {
+                i++;
+            }
+        } else {
+            i++;
+        }
+    }
+    
+    // Extract final split points (excluding the first point which is always 0)
+    for (let j = 0; j < sectors.length; j++) {
+        if (j > 0 || sectors[j].end !== 0) {
+            finalSplitPoints.push(sectors[j].end);
+        }
+    }
+
+    return finalSplitPoints;
+}
