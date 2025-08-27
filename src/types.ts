@@ -1,19 +1,20 @@
-// Type definitions for telemetry data
-export interface TelemetryDataPoint {
+export interface DataIndex {
     time: number;
-    speed: number;
-    latAcc: number;
-    lonAcc: number;
-    altitude: number;
+    datapointIndex: number;
+}
+
+export interface Datapoint {
+    time: number;
     lat: number;
     lon: number;
-    heading: number;
+    data: Map<string, number>;
 }
 
 export interface LapData {
     lapIndex: number;
     lapTime: number;
-    telemetryData: TelemetryDataPoint[];
+    dataIndex: DataIndex[];
+    datapoints: Datapoint[];
 }
 
 export interface TelemetryHeader {
@@ -25,7 +26,9 @@ export interface TelemetryHeader {
 
 export interface Session {
     laps: LapData[];
+    bestLapIndex: number;
     duration: number[];
     date?: string;
     time?: string;
+    channels: string[];
 }

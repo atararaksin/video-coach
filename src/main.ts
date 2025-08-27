@@ -107,12 +107,12 @@ class CSVUploadHandler {
             const lapDiv = document.createElement('div');
             lapDiv.className = 'lap-info';
             
-            const avgSpeed = lap.telemetryData.length > 0 
-                ? (lap.telemetryData.reduce((sum, point) => sum + point.speed, 0) / lap.telemetryData.length).toFixed(2)
+            const avgSpeed = lap.datapoints.length > 0 
+                ? (lap.datapoints.reduce((sum, point) => sum + point.data.get("GPS Speed"), 0) / lap.datapoints.length).toFixed(2)
                 : '0.00';
             
-            const maxSpeed = lap.telemetryData.length > 0
-                ? Math.max(...lap.telemetryData.map(point => point.speed)).toFixed(2)
+            const maxSpeed = lap.datapoints.length > 0
+                ? Math.max(...lap.datapoints.map(point => point.data.get("GPS Speed"))).toFixed(2)
                 : '0.00';
 
             lapDiv.innerHTML = `
@@ -124,7 +124,7 @@ class CSVUploadHandler {
                     </div>
                     <div class="data-item">
                         <strong>Data Points</strong>
-                        ${lap.telemetryData.length}
+                        ${lap.datapoints.length}
                     </div>
                     <div class="data-item">
                         <strong>Avg Speed</strong>

@@ -1,4 +1,4 @@
-import { Session, LapData, TelemetryDataPoint, TelemetryHeader } from './types.js';
+import { Session, LapData, TelemetryHeader, Datapoint } from './types.js';
 
 export class TelemetryCSVParser {
     parseCSV(csvText: string): Session {
@@ -10,18 +10,25 @@ export class TelemetryCSVParser {
         // Find the data section (starts after the header with column names)
         const dataStartIndex = this.findDataStartIndex(lines);
         const dataLines = lines.slice(dataStartIndex);
+
+        // Parse channel names
+        const channels = this.parseChannelNames(lines);
         
         // Parse telemetry data
-        const telemetryData = this.parseTelemetryData(dataLines);
+        const datapoints = this.parseDatapoints(dataLines, channels);
         
         // Split into laps using beacon markers
-        const laps = this.splitIntoLaps(telemetryData, headerInfo.beaconMarkers);
-        
+        const laps = this.splitIntoLaps(datapoints, headerInfo.beaconMarkers);
+
+        const bestLapIndex = laps.findIndex(lap => lap.lapTime === Math.min(...laps.map(lap => lap.lapTime)));
+
         const session: Session = {
             laps: laps,
+            bestLapIndex: bestLapIndex,
             duration: headerInfo.duration ? [parseFloat(headerInfo.duration)] : [],
             date: headerInfo.date,
-            time: headerInfo.time
+            time: headerInfo.time,
+            channels: channels
         };
 
         return session;
@@ -59,6 +66,16 @@ export class TelemetryCSVParser {
         return info;
     }
 
+    parseChannelNames(lines: string[]): string[] {
+        // Look for the line that starts with "Time" and contains "GPS Speed" (column headers)
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith('"Time"') && lines[i].includes('"GPS Speed"')) {
+                return lines[i].split(',').map(val => val.replace(/"/g, ''));
+            }
+        }
+        return [];
+    }
+
 
     findDataStartIndex(lines: string[]): number {
         // Look for the line that starts with "Time" and contains "GPS Speed" (column headers)
@@ -70,49 +87,50 @@ export class TelemetryCSVParser {
         return 0;
     }
 
-    parseTelemetryData(dataLines: string[]): TelemetryDataPoint[] {
-        const telemetryData: TelemetryDataPoint[] = [];
+    parseDatapoints(dataLines: string[], channels: string[]): Datapoint[] {
+        const datapoints: Datapoint[] = [];
         
         for (const line of dataLines) {
             if (!line) continue;
             
             const values = line.split(',').map(val => val.replace(/"/g, ''));
             
-            if (values.length >= 15) {
-                const dataPoint: TelemetryDataPoint = {
-                    time: parseFloat(values[0]) || 0,
-                    speed: parseFloat(values[1]) || 0,
-                    latAcc: parseFloat(values[3]) || 0,
-                    lonAcc: parseFloat(values[4]) || 0,
-                    altitude: parseFloat(values[8]) || 0,
-                    lat: parseFloat(values[12]) || 0,
-                    lon: parseFloat(values[13]) || 0,
-                    heading: parseFloat(values[6]) || 0
-                };
+            if (values.length >= 2) {
+                const data: Map<string, number> = new Map();
+                for (let i = 0; i < values.length; i++) {
+                    const val = parseFloat(values[i]) || 0;
+                    data.set(channels[i], val);
+                }
                 
-                telemetryData.push(dataPoint);
+                datapoints.push({
+                    time: data.get("Time"),
+                    lat: data.get("GPS Latitude"),
+                    lon: data.get("GPS Longitude"),
+                    data: data
+                });
             }
         }
         
-        return telemetryData;
+        return datapoints;
     }
 
-    splitIntoLaps(telemetryData: TelemetryDataPoint[], beaconMarkers?: number[]): LapData[] {
+    splitIntoLaps(datapoints: Datapoint[], beaconMarkers?: number[]): LapData[] {
         console.log('Splitting into laps:', { 
-            totalDataPoints: telemetryData.length, 
+            totalDataPoints: datapoints.length, 
             beaconMarkers: beaconMarkers,
-            firstDataPoint: telemetryData[0],
-            lastDataPoint: telemetryData[telemetryData.length - 1]
+            firstDataPoint: datapoints[0],
+            lastDataPoint: datapoints[datapoints.length - 1]
         });
 
         if (!beaconMarkers || beaconMarkers.length === 0) {
             // If no beacon markers, return all data as one lap
             const lapData: LapData = {
-                lapIndex: 1,
-                lapTime: telemetryData.length > 0 ? telemetryData[telemetryData.length - 1].time : 0,
-                telemetryData: telemetryData
+                lapIndex: 0,
+                lapTime: datapoints.length > 0 ? datapoints[datapoints.length - 1].time : 0,
+                datapoints: datapoints,
+                dataIndex: datapoints.map((dp, i) => {return {time: dp.time, datapointIndex: i}})
             };
-            console.log('No beacon markers, single lap with', lapData.telemetryData.length, 'data points');
+            console.log('No beacon markers, single lap with', lapData.datapoints.length, 'data points');
             return [lapData];
         }
 
@@ -126,16 +144,17 @@ export class TelemetryCSVParser {
             const lapTime = endTime - startTime;
             
             // Filter telemetry data for this lap
-            const lapTelemetryData = telemetryData.filter(point => 
+            const lapDatapoints = datapoints.filter(point => 
                 point.time >= startTime && point.time < endTime
             );
             
-            console.log(`Lap ${i + 1}: ${startTime}s to ${endTime}s, ${lapTelemetryData.length} data points`);
+            console.log(`Lap ${i}: ${startTime}s to ${endTime}s, ${lapDatapoints.length} data points`);
             
             const lapData: LapData = {
-                lapIndex: i + 1,
+                lapIndex: i,
                 lapTime: lapTime,
-                telemetryData: lapTelemetryData
+                datapoints: lapDatapoints,
+                dataIndex: lapDatapoints.map((dp, i) => {return {time: dp.time, datapointIndex: i}})
             };
             
             laps.push(lapData);
@@ -143,13 +162,14 @@ export class TelemetryCSVParser {
         }
         
         // Handle any remaining data after the last beacon marker
-        const remainingData = telemetryData.filter(point => point.time >= previousTime);
+        const remainingData = datapoints.filter(point => point.time >= previousTime);
         if (remainingData.length > 0) {
             const finalLapTime = remainingData[remainingData.length - 1].time - previousTime;
             const finalLap: LapData = {
-                lapIndex: laps.length + 1,
+                lapIndex: laps.length,
                 lapTime: finalLapTime,
-                telemetryData: remainingData
+                datapoints: remainingData,
+                dataIndex: remainingData.map((dp, i) => {return {time: dp.time, datapointIndex: i}})
             };
             console.log(`Final lap: ${previousTime}s to end, ${remainingData.length} data points`);
             laps.push(finalLap);
