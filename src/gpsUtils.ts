@@ -1,5 +1,11 @@
 import { Datapoint } from "./types";
 
+export function findClosestDatapoint(datapoints: Datapoint[], referenceDatapoint: Datapoint): Datapoint {
+    const index = findClosestDatapointIndex(datapoints, referenceDatapoint.lat, referenceDatapoint.lon);
+    if (index == -1) return null;
+    else return datapoints[index];
+}
+
 export function findClosestDatapointIndex(datapoints: Datapoint[], lat: number, lon: number): number {
     if (datapoints.length === 0) {
         return -1;

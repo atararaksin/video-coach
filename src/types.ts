@@ -1,6 +1,6 @@
-export interface DataIndex {
+export interface TimeToDistanceIndex {
     time: number;
-    datapointIndex: number;
+    distanceBasedIndex: number;
 }
 
 export interface Datapoint {
@@ -14,8 +14,9 @@ export interface Datapoint {
 export interface LapData {
     lapIndex: number;
     lapTime: number;
+    lapStartTime: number;
     sectorTimes: number[];
-    dataIndex: DataIndex[];
+    timeToDistanceIndex: TimeToDistanceIndex[];
     datapoints: Datapoint[];
 }
 

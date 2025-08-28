@@ -1,3 +1,4 @@
+import { reindexLap } from "./lapUtils.js";
 import { calculateSectorTimes, splitIntoSectors } from "./sectorUtils.js";
 import { Session, Track } from "./types";
 
@@ -15,9 +16,16 @@ export class Studio {
             };
         }
 
+        // Add sector times to complete laps
         for (let i = 1; i < session.laps.length - 1; i++) {
             const lap = session.laps[i];
             lap.sectorTimes = calculateSectorTimes(lap.datapoints, this.track.sectorSplits, lap.lapTime);
+        }
+
+        // Reindex complete laps
+        for (let i = 1; i < session.laps.length - 1; i++) {
+            const lap = session.laps[i];
+            reindexLap(lap, session.laps[session.bestLapIndex]);
         }
     }
 }
