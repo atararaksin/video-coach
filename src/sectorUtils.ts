@@ -327,12 +327,12 @@ function mergeShortSectors(datapoints: Datapoint[], splitPoints: number[]): numb
         prevIndex = splitIndex;
     }
     
-    // Merge sectors shorter than 4 seconds
+    // Merge sectors shorter than 3.5 seconds
     const finalSplitPoints: number[] = [];
     let i = 0;
     
     while (i < sectors.length) {
-        if (sectors[i].duration < 4.0 && sectors.length > 1) {
+        if (sectors[i].duration < 3.5 && sectors.length > 1) {
             // Find which adjacent sector is shorter to merge with
             let mergeWithPrevious = false;
             
