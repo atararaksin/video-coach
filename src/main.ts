@@ -1,6 +1,9 @@
 import { Session, LapData } from './types.js';
 import { TelemetryCSVParser } from './csvParser.js';
 import { calculateSectorTimes, splitIntoSectors } from './sectorUtils.js';
+import { Studio } from './studio.js';
+
+const studio = new Studio();
 
 // UI Handler for CSV File Upload
 class CSVUploadHandler {
@@ -56,10 +59,7 @@ class CSVUploadHandler {
         try {
             const text = await this.readFileAsText(file);
             const session = this.parser.parseCSV(text);
-            const sectorSplits = splitIntoSectors(session.laps[session.bestLapIndex].datapoints);
-            for (let lap of session.laps) {
-                lap.sectorTimes = calculateSectorTimes(lap.datapoints, sectorSplits, lap.lapTime);
-            }
+            studio.addSession(session);
             this.displaySession(session);
         } catch (error) {
             console.error('Error parsing CSV:', error);

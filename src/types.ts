@@ -39,3 +39,7 @@ export interface Point {
     lat: number;
     lon: number;
 }
+
+export interface Track {
+    sectorSplits: Point[];
+}
