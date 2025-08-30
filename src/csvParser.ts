@@ -104,6 +104,7 @@ export class TelemetryCSVParser {
                 
                 datapoints.push({
                     time: data.get("Time"),
+                    timeAdjusted: data.get("Time"),
                     lat: data.get("GPS Latitude"),
                     lon: data.get("GPS Longitude"),
                     speed: data.get("GPS Speed"),

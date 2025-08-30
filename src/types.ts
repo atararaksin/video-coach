@@ -5,6 +5,7 @@ export interface TimeToDistanceIndex {
 
 export interface Datapoint {
     time: number;
+    timeAdjusted: number;
     lat: number;
     lon: number;
     speed: number;

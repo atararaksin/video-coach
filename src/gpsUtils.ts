@@ -11,10 +11,41 @@ export function findClosestDatapointIndex(datapoints: Datapoint[], lat: number, 
         return -1;
     }
 
+    // Do a rough search first, spot checking short ranges of datapoints
+    const range = 50;
     let closestIndex = 0;
     let minDistance = calculateDistance(lat, lon, datapoints[0].lat, datapoints[0].lon);
+    for (let i = range; i < datapoints.length; i+= range) {
+        const distance = calculateDistance(lat, lon, datapoints[i].lat, datapoints[i].lon);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
 
-    for (let i = 1; i < datapoints.length; i++) {
+    const indexFromRange = closestIndex;
+
+    // Now search thoroughly [-range; +range] interval
+    for (let i = Math.max(0, indexFromRange - range); i < Math.min(indexFromRange + range, datapoints.length); i++) {
+        const distance = calculateDistance(lat, lon, datapoints[i].lat, datapoints[i].lon);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+
+    // Additionally search start and end of lap
+    // TODO this is only needed when indexFromRange is close to the start or end of lap
+    // TODO also dedupe this code
+    for (let i = 0; i < Math.min(range, datapoints.length); i++) {
+        const distance = calculateDistance(lat, lon, datapoints[i].lat, datapoints[i].lon);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+
+    for (let i = Math.max(0, datapoints.length - range - 1); i < datapoints.length; i++) {
         const distance = calculateDistance(lat, lon, datapoints[i].lat, datapoints[i].lon);
         if (distance < minDistance) {
             minDistance = distance;
