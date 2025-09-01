@@ -22,7 +22,10 @@ export class TelemetryCSVParser {
 
         const bestLapIndex = laps.findIndex(lap => lap.lapTime === Math.min(...laps.map(lap => lap.lapTime)));
 
+        const id = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
         const session: Session = {
+            id: id,
             laps: laps,
             bestLapIndex: bestLapIndex,
             duration: headerInfo.duration ? [parseFloat(headerInfo.duration)] : [],

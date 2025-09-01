@@ -4,13 +4,13 @@ import { Session, Track } from "./types";
 
 export class Studio {
     public track: Track;
-    public readonly sessions: Session[] = [];
+    public readonly sessions: Map<string, Session> = new Map();
 
     addSession(session: Session) {
-        this.sessions.push(session);
+        this.sessions.set(session.id, session);
 
         // Is this is the first session added, initialize Track
-        if (this.sessions.length == 1) {
+        if (this.sessions.size == 1) {
             this.track = {
                 sectorSplits: splitIntoSectors(session.laps[session.bestLapIndex].datapoints)
             };
@@ -27,5 +27,9 @@ export class Studio {
             const lap = session.laps[i];
             reindexLap(lap, session.laps[session.bestLapIndex]);
         }
+    }
+
+    removeSession(sessionId: string) {
+        this.sessions.delete(sessionId);
     }
 }

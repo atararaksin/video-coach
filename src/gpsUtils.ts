@@ -12,7 +12,7 @@ export function findClosestDatapointIndex(datapoints: Datapoint[], lat: number, 
     }
 
     // Do a rough search first, spot checking short ranges of datapoints
-    const range = 50;
+    const range = 20;
     let closestIndex = 0;
     let minDistance = calculateDistance(lat, lon, datapoints[0].lat, datapoints[0].lon);
     for (let i = range; i < datapoints.length; i+= range) {

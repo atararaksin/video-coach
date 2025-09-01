@@ -1,53 +1,45 @@
 import { Session, LapData } from './types.js';
 import { TelemetryCSVParser } from './csvParser.js';
-import { calculateSectorTimes, splitIntoSectors } from './sectorUtils.js';
 import { Studio } from './studio.js';
 
 const studio = new Studio();
 
-// UI Handler for CSV File Upload
-class CSVUploadHandler {
+interface SessionTab {
+    id: string;
+    session: Session;
+    filename: string;
+}
+
+class RacingDataStudio {
     private parser: TelemetryCSVParser;
+    private sessionTabs: SessionTab[] = [];
+    private activeSessionId: string | null = null;
 
     constructor() {
         this.parser = new TelemetryCSVParser();
-        this.setupEventListeners();
+        this.setupGlobalFunctions();
     }
 
-    setupEventListeners(): void {
-        const uploadArea = document.getElementById('uploadArea')!;
+    setupGlobalFunctions(): void {
+        // Make functions available globally for HTML onclick handlers
+        (window as any).importSession = () => this.importSession();
+        (window as any).handleFileSelect = (event: Event) => this.handleFileSelect(event);
+        (window as any).switchToTab = (sessionId: string) => this.switchToTab(sessionId);
+        (window as any).closeTab = (sessionId: string, event: Event) => this.closeTab(sessionId, event);
+    }
+
+    importSession(): void {
         const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+        fileInput.click();
+    }
 
-        // File input change event
-        fileInput.addEventListener('change', (e) => {
-            const target = e.target as HTMLInputElement;
-            if (target.files && target.files.length > 0) {
-                this.handleFile(target.files[0]);
-            }
-        });
-
-        // Drag and drop events
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-                this.handleFile(e.dataTransfer.files[0]);
-            }
-        });
-
-        // Click to select file
-        uploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
+    async handleFileSelect(event: Event): Promise<void> {
+        const target = event.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+            await this.handleFile(target.files[0]);
+            // Reset the input so the same file can be selected again
+            target.value = '';
+        }
     }
 
     async handleFile(file: File): Promise<void> {
@@ -60,7 +52,19 @@ class CSVUploadHandler {
             const text = await this.readFileAsText(file);
             const session = this.parser.parseCSV(text);
             studio.addSession(session);
-            this.displaySession(session);
+            
+            // Create a new session tab
+            const sessionTab: SessionTab = {
+                id: session.id,
+                session: session,
+                filename: file.name
+            };
+            
+            this.sessionTabs.push(sessionTab);
+            this.createTab(sessionTab);
+            this.createSessionContent(sessionTab);
+            this.switchToTab(sessionTab.id);
+            
         } catch (error) {
             console.error('Error parsing CSV:', error);
             alert('Error parsing CSV file: ' + (error as Error).message);
@@ -76,91 +80,166 @@ class CSVUploadHandler {
         });
     }
 
-    displaySession(session: Session): void {
-        const sessionDataDiv = document.getElementById('sessionData')!;
-        const sessionInfoDiv = document.getElementById('sessionInfo')!;
-        const lapDataDiv = document.getElementById('lapData')!;
-
-        // Show session data
-        sessionDataDiv.style.display = 'block';
-
-        // Display session info
-        sessionInfoDiv.innerHTML = `
-            <div class="data-grid">
-                <div class="data-item">
-                    <strong>Total Laps</strong>
-                    ${session.laps.length}
-                </div>
-                <div class="data-item">
-                    <strong>Total Duration</strong>
-                    ${session.duration.length > 0 ? session.duration[0].toFixed(2) + 's' : 'N/A'}
-                </div>
-                <div class="data-item">
-                    <strong>Date</strong>
-                    ${session.date || 'N/A'}
-                </div>
-                <div class="data-item">
-                    <strong>Time</strong>
-                    ${session.time || 'N/A'}
-                </div>
-            </div>
+    createTab(sessionTab: SessionTab): void {
+        const tabsContainer = document.getElementById('tabsContainer')!;
+        
+        const tab = document.createElement('div');
+        tab.className = 'tab';
+        tab.id = `tab_${sessionTab.id}`;
+        tab.onclick = () => this.switchToTab(sessionTab.id);
+        
+        tab.innerHTML = `
+            <span>${sessionTab.filename}</span>
+            <span class="tab-close" onclick="closeTab('${sessionTab.id}', event)">×</span>
         `;
+        
+        tabsContainer.appendChild(tab);
+    }
 
-        // Display lap data
-        lapDataDiv.innerHTML = '';
-        session.laps.forEach((lap: LapData) => {
-            const lapDiv = document.createElement('div');
-            lapDiv.className = 'lap-info';
-            
-            const avgSpeed = lap.datapoints.length > 0 
-                ? (lap.datapoints.reduce((sum, point) => sum + point.data.get("GPS Speed"), 0) / lap.datapoints.length).toFixed(2)
-                : '0.00';
-            
-            const maxSpeed = lap.datapoints.length > 0
-                ? Math.max(...lap.datapoints.map(point => point.data.get("GPS Speed"))).toFixed(2)
-                : '0.00';
+    createSessionContent(sessionTab: SessionTab): void {
+        const content = document.getElementById('content')!;
+        
+        const sessionDiv = document.createElement('div');
+        sessionDiv.className = 'session-content';
+        sessionDiv.id = `content_${sessionTab.id}`;
+        
+        sessionDiv.innerHTML = this.generateLapTable(sessionTab.session);
+        
+        content.appendChild(sessionDiv);
+    }
 
-            // Generate sector times display
-            const sectorTimesHtml = lap.sectorTimes && lap.sectorTimes.length > 0 
-                ? lap.sectorTimes.map((time, index) => `
-                    <div class="data-item">
-                        <strong>S${index + 1}</strong>
-                        ${time.toFixed(3)}s
-                    </div>
-                `).join('')
-                : '';
-
-            lapDiv.innerHTML = `
-                <h3>Lap ${lap.lapIndex}</h3>
-                <div class="data-grid">
-                    <div class="data-item">
-                        <strong>Lap Time</strong>
-                        ${lap.lapTime.toFixed(3)}s
-                    </div>
-                    <div class="data-item">
-                        <strong>Data Points</strong>
-                        ${lap.datapoints.length}
-                    </div>
-                    <div class="data-item">
-                        <strong>Avg Speed</strong>
-                        ${avgSpeed} km/h
-                    </div>
-                    <div class="data-item">
-                        <strong>Max Speed</strong>
-                        ${maxSpeed} km/h
-                    </div>
-                    ${sectorTimesHtml}
+    generateLapTable(session: Session): string {
+        // Filter out incomplete laps (first and last are usually incomplete)
+        const completeLaps = session.laps.slice(1, -1);
+        
+        if (completeLaps.length === 0) {
+            return `
+                <div class="empty-state">
+                    <h2>No Complete Laps Found</h2>
+                    <p>This session doesn't contain any complete lap data.</p>
                 </div>
             `;
-            
-            lapDataDiv.appendChild(lapDiv);
-        });
+        }
 
-        console.log('Parsed Session:', session);
+        // Determine number of sectors from the first complete lap
+        const sectorCount = completeLaps[0].sectorTimes?.length || 0;
+        
+        // Generate sector headers
+        const sectorHeaders = Array.from({length: sectorCount}, (_, i) => 
+            `<th>S${i + 1}</th>`
+        ).join('');
+
+        // Generate table rows
+        const tableRows = completeLaps.map(lap => {
+            const maxSpeed = lap.datapoints.length > 0
+                ? Math.max(...lap.datapoints.map(point => point.data.get("GPS Speed") || 0))
+                : 0;
+
+            const sectorCells = lap.sectorTimes 
+                ? lap.sectorTimes.map(time => 
+                    `<td class="sector-time">${this.formatTime(time)}</td>`
+                  ).join('')
+                : Array.from({length: sectorCount}, () => '<td class="sector-time">-</td>').join('');
+
+            return `
+                <tr>
+                    <td>${lap.lapIndex}</td>
+                    <td class="lap-time">${this.formatTime(lap.lapTime)}</td>
+                    ${sectorCells}
+                    <td>${maxSpeed.toFixed(1)} km/h</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <table class="lap-table">
+                <thead>
+                    <tr>
+                        <th>Lap #</th>
+                        <th>Lap Time</th>
+                        ${sectorHeaders}
+                        <th>Top Speed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+        `;
+    }
+
+    formatTime(seconds: number): string {
+        if (seconds < 60) {
+            return seconds.toFixed(3) + 's';
+        }
+        
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}:${remainingSeconds.toFixed(3).padStart(6, '0')}`;
+    }
+
+    switchToTab(sessionId: string): void {
+        // Hide empty state
+        const emptyState = document.getElementById('emptyState')!;
+        emptyState.style.display = 'none';
+
+        // Update active tab
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        const activeTab = document.getElementById(`tab_${sessionId}`);
+        if (activeTab) {
+            activeTab.classList.add('active');
+        }
+
+        // Update active content
+        document.querySelectorAll('.session-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        const activeContent = document.getElementById(`content_${sessionId}`);
+        if (activeContent) {
+            activeContent.classList.add('active');
+        }
+
+        this.activeSessionId = sessionId;
+    }
+
+    closeTab(sessionId: string, event: Event): void {
+        event.stopPropagation(); // Prevent tab switch when clicking close button
+        
+        // Find and remove the session
+        const sessionIndex = this.sessionTabs.findIndex(s => s.id === sessionId);
+        if (sessionIndex === -1) return;
+        
+        this.sessionTabs.splice(sessionIndex, 1);
+        
+        // Remove tab and content elements
+        const tab = document.getElementById(`tab_${sessionId}`);
+        const content = document.getElementById(`content_${sessionId}`);
+        
+        if (tab) tab.remove();
+        if (content) content.remove();
+        
+        // If this was the active tab, switch to another tab or show empty state
+        if (this.activeSessionId === sessionId) {
+            if (this.sessionTabs.length > 0) {
+                // Switch to the last remaining session
+                this.switchToTab(this.sessionTabs[this.sessionTabs.length - 1].id);
+            } else {
+                // Show empty state
+                this.activeSessionId = null;
+                const emptyState = document.getElementById('emptyState')!;
+                emptyState.style.display = 'block';
+            }
+        }
+
+        studio.removeSession(sessionId);
     }
 }
 
-// Initialize the upload handler when the page loads
+// Initialize the application when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new CSVUploadHandler();
+    new RacingDataStudio();
 });

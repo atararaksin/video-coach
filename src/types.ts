@@ -29,6 +29,7 @@ export interface TelemetryHeader {
 }
 
 export interface Session {
+    id: string;
     laps: LapData[];
     bestLapIndex: number;
     duration: number[];
