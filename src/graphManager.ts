@@ -27,16 +27,14 @@ export class GraphManager {
             <div class="graph-header">
                 <div class="graph-controls-row">
                     <div class="channel-selector">
-                        <label>Primary Channel:</label>
                         <select id="${graphId}_channel1" onchange="updateGraph('${graphId}')">
-                            <option value="">Select channel...</option>
+                            <option value="">Left channel...</option>
                             ${channelOptions}
                         </select>
                     </div>
-                    <div class="channel-selector">
-                        <label>Secondary Channel (optional):</label>
+                    <div class="channel-selector right-channel">
                         <select id="${graphId}_channel2" onchange="updateGraph('${graphId}')">
-                            <option value="">None</option>
+                            <option value="">Right channel...</option>
                             ${channelOptions}
                         </select>
                     </div>
