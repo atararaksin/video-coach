@@ -19,7 +19,15 @@ export class Studio {
         // Add sector times to complete laps
         for (let i = 1; i < session.laps.length - 1; i++) {
             const lap = session.laps[i];
+            
             lap.sectorTimes = calculateSectorTimes(lap.datapoints, this.track.sectorSplits, lap.lapTime);
+
+            lap.sectorStartTimes = [];
+            let sectorStartTime = lap.lapStartTime;
+            for (let sectorTime of lap.sectorTimes) {
+                sectorStartTime += sectorTime;
+                lap.sectorStartTimes.push(sectorStartTime);
+            }
         }
 
         // Reindex complete laps

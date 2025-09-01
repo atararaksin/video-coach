@@ -25,6 +25,7 @@ export function reindexLap(lap: LapData, referenceLap: LapData) {
 function rebuildDatapointsToMatchReferenceLapDatapointsOnDistance(datapoints: Datapoint[], refDatapoints: Datapoint[]): Datapoint[] {
     const timeStep = 0.005;
     const interpolatedDatapoints: Datapoint[] = [];
+    const channels = datapoints[0].data.keys();
     for (let i = 0; i < datapoints.length - 1; i++) {
         const dp1 = datapoints[i];
         const dp2 = datapoints[i + 1];
@@ -34,10 +35,15 @@ function rebuildDatapointsToMatchReferenceLapDatapointsOnDistance(datapoints: Da
         for (let time = dp1.time + timeStep; time < dp2.time; time += timeStep) {
             const intermediateDp = Object.assign({}, dp1);
             
-            intermediateDp.timeAdjusted = time;
             intermediateDp.lat = dp1.lat + (dp2.lat - dp1.lat) * (time - dp1.time) / (dp2.time - dp1.time);
             intermediateDp.lon = dp1.lon + (dp2.lon - dp1.lon) * (time - dp1.time) / (dp2.time - dp1.time);
             intermediateDp.speed = dp1.speed + (dp2.speed - dp1.speed) * (time - dp1.time) / (dp2.time - dp1.time);
+
+            for (let channel of channels) {
+                const dp1Val = dp1.data.get(channel);
+                const dp2Val = dp2.data.get(channel);
+                intermediateDp.data.set(channel, dp1Val + (dp2Val - dp1Val) * (time - dp1.time) / (dp2.time - dp1.time));
+            }
 
             interpolatedDatapoints.push(intermediateDp);
         }

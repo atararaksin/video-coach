@@ -1,6 +1,7 @@
 import { Session, LapData } from './types.js';
 import { TelemetryCSVParser } from './csvParser.js';
 import { Studio } from './studio.js';
+import { GraphManager } from './graphManager.js';
 
 const studio = new Studio();
 
@@ -14,9 +15,11 @@ class RacingDataStudio {
     private parser: TelemetryCSVParser;
     private sessionTabs: SessionTab[] = [];
     private activeSessionId: string | null = null;
+    private graphManager: GraphManager;
 
     constructor() {
         this.parser = new TelemetryCSVParser();
+        this.graphManager = new GraphManager();
         this.setupGlobalFunctions();
     }
 
@@ -26,6 +29,10 @@ class RacingDataStudio {
         (window as any).handleFileSelect = (event: Event) => this.handleFileSelect(event);
         (window as any).switchToTab = (sessionId: string) => this.switchToTab(sessionId);
         (window as any).closeTab = (sessionId: string, event: Event) => this.closeTab(sessionId, event);
+        (window as any).addTelemetryGraph = (sessionId: string) => this.addTelemetryGraph(sessionId);
+        (window as any).removeGraph = (graphId: string) => this.removeGraph(graphId);
+        (window as any).updateGraph = (graphId: string) => this.updateGraph(graphId);
+        (window as any).selectLap = (sessionId: string, lapIndex: number) => this.selectLap(sessionId, lapIndex);
     }
 
     importSession(): void {
@@ -106,6 +113,12 @@ class RacingDataStudio {
         sessionDiv.innerHTML = this.generateLapTable(sessionTab.session);
         
         content.appendChild(sessionDiv);
+
+        // Auto-add GPS Speed graph if available
+        this.addDefaultGraph(sessionTab);
+
+        // Auto-select the best lap (fastest lap time)
+        this.selectBestLap(sessionTab.session);
     }
 
     generateLapTable(session: Session): string {
@@ -142,7 +155,7 @@ class RacingDataStudio {
                 : Array.from({length: sectorCount}, () => '<td class="sector-time">-</td>').join('');
 
             return `
-                <tr>
+                <tr onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
                     <td>${lap.lapIndex}</td>
                     <td class="lap-time">${this.formatTime(lap.lapTime)}</td>
                     ${sectorCells}
@@ -165,6 +178,20 @@ class RacingDataStudio {
                     ${tableRows}
                 </tbody>
             </table>
+            ${this.generateTelemetryGraphs(session)}
+        `;
+    }
+
+    generateTelemetryGraphs(session: Session): string {
+        return `
+            <div class="telemetry-section">
+                <div class="graph-controls">
+                    <button class="add-graph-btn" onclick="addTelemetryGraph('${session.id}')">Add Graph</button>
+                </div>
+                <div id="graphs-container-${session.id}" class="graphs-container">
+                    <!-- Graphs will be added here dynamically -->
+                </div>
+            </div>
         `;
     }
 
@@ -236,6 +263,76 @@ class RacingDataStudio {
         }
 
         studio.removeSession(sessionId);
+    }
+
+    addTelemetryGraph(sessionId: string): void {
+        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
+        if (!session) return;
+        
+        this.graphManager.addTelemetryGraph(sessionId, session);
+    }
+
+    removeGraph(graphId: string): void {
+        this.graphManager.removeGraph(graphId);
+    }
+
+    updateGraph(graphId: string): void {
+        this.graphManager.updateGraph(graphId);
+    }
+
+    selectLap(sessionId: string, lapIndex: number): void {
+        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
+        if (!session) return;
+
+        // Find the lap directly by lapIndex
+        const lap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!lap) return;
+
+        // Update visual selection in table
+        const sessionContent = document.getElementById(`content_${sessionId}`);
+        if (sessionContent) {
+            // Remove previous selection
+            sessionContent.querySelectorAll('.lap-table tbody tr').forEach(row => {
+                row.classList.remove('selected');
+            });
+            
+            // Find the clicked row by matching the exact lapIndex in the onclick attribute
+            const rows = sessionContent.querySelectorAll('.lap-table tbody tr');
+            rows.forEach(row => {
+                const onclick = row.getAttribute('onclick');
+                // Use more precise matching to avoid substring issues (e.g., lap 1 vs lap 11)
+                if (onclick && onclick === `selectLap('${sessionId}', ${lapIndex})`) {
+                    row.classList.add('selected');
+                }
+            });
+        }
+
+        // Update graphs with selected lap
+        this.graphManager.setSelectedLap(lap);
+    }
+
+    addDefaultGraph(sessionTab: SessionTab): void {
+        // Check if GPS Speed channel is available
+        if (sessionTab.session.channels.includes('GPS Speed')) {
+            // Add a GPS Speed graph
+            this.graphManager.addTelemetryGraph(sessionTab.id, sessionTab.session);
+            
+            // Set GPS Speed as the primary channel for the first graph
+            setTimeout(() => {
+                const graphId = `graph_${sessionTab.id}_0`; // First graph has counter 0
+                const channel1Select = document.getElementById(`${graphId}_channel1`) as HTMLSelectElement;
+                if (channel1Select) {
+                    channel1Select.value = 'GPS Speed';
+                    this.updateGraph(graphId);
+                }
+            }, 100); // Small delay to ensure DOM elements are created
+        }
+    }
+
+    selectBestLap(session: Session): void {
+        if (session.bestLapIndex !== undefined) {
+            this.selectLap(session.id, session.bestLapIndex);
+        }
     }
 }
 
