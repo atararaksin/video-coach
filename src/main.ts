@@ -19,7 +19,7 @@ class RacingDataStudio {
 
     constructor() {
         this.parser = new TelemetryCSVParser();
-        this.graphManager = new GraphManager();
+        this.graphManager = new GraphManager(studio);
         this.setupGlobalFunctions();
     }
 
@@ -33,6 +33,7 @@ class RacingDataStudio {
         (window as any).removeGraph = (graphId: string) => this.removeGraph(graphId);
         (window as any).updateGraph = (graphId: string) => this.updateGraph(graphId);
         (window as any).selectLap = (sessionId: string, lapIndex: number) => this.selectLap(sessionId, lapIndex);
+        (window as any).toggleReferenceLap = (sessionId: string, lapIndex: number) => this.toggleReferenceLap(sessionId, lapIndex);
     }
 
     importSession(): void {
@@ -154,12 +155,24 @@ class RacingDataStudio {
                   ).join('')
                 : Array.from({length: sectorCount}, () => '<td class="sector-time">-</td>').join('');
 
+            const referenceLap = studio.getReferenceLap();
+            const isReferenceLap = referenceLap && 
+                referenceLap.sessionId === lap.sessionId && 
+                referenceLap.lapIndex === lap.lapIndex;
+            
+            const referenceIcon = isReferenceLap ? '★' : '☆';
+            const referenceTitle = isReferenceLap ? 'Remove as reference lap' : 'Set as reference lap';
+            const rowClass = isReferenceLap ? 'reference-lap' : '';
+
             return `
-                <tr onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
+                <tr class="${rowClass}" onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
                     <td>${lap.lapIndex}</td>
                     <td class="lap-time">${this.formatTime(lap.lapTime)}</td>
                     ${sectorCells}
                     <td>${maxSpeed.toFixed(1)} km/h</td>
+                    <td>
+                        <button class="reference-btn-icon" title="${referenceTitle}" onclick="event.stopPropagation(); toggleReferenceLap('${session.id}', ${lap.lapIndex})">${referenceIcon}</button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -172,6 +185,7 @@ class RacingDataStudio {
                         <th>Lap Time</th>
                         ${sectorHeaders}
                         <th>Top Speed</th>
+                        <th>Ref</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -263,6 +277,9 @@ class RacingDataStudio {
         }
 
         studio.removeSession(sessionId);
+        
+        // Update all graphs in case the reference lap was removed
+        this.graphManager.updateAllGraphsForReferenceChange();
     }
 
     addTelemetryGraph(sessionId: string): void {
@@ -314,12 +331,11 @@ class RacingDataStudio {
     addDefaultGraph(sessionTab: SessionTab): void {
         // Check if GPS Speed channel is available
         if (sessionTab.session.channels.includes('GPS Speed')) {
-            // Add a GPS Speed graph
-            this.graphManager.addTelemetryGraph(sessionTab.id, sessionTab.session);
+            // Add a GPS Speed graph and get the graph ID
+            const graphId = this.graphManager.addTelemetryGraph(sessionTab.id, sessionTab.session);
             
-            // Set GPS Speed as the primary channel for the first graph
+            // Set GPS Speed as the primary channel for the new graph
             setTimeout(() => {
-                const graphId = `graph_${sessionTab.id}_0`; // First graph has counter 0
                 const channel1Select = document.getElementById(`${graphId}_channel1`) as HTMLSelectElement;
                 if (channel1Select) {
                     channel1Select.value = 'GPS Speed';
@@ -333,6 +349,76 @@ class RacingDataStudio {
         if (session.bestLapIndex !== undefined) {
             this.selectLap(session.id, session.bestLapIndex);
         }
+    }
+
+    toggleReferenceLap(sessionId: string, lapIndex: number): void {
+        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
+        if (!session) return;
+
+        // Find the lap
+        const lap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!lap) return;
+
+        const currentReferenceLap = studio.getReferenceLap();
+        
+        // If this lap is already the reference lap, remove it
+        if (currentReferenceLap && 
+            currentReferenceLap.sessionId === lap.sessionId && 
+            currentReferenceLap.lapIndex === lap.lapIndex) {
+            studio.setReferenceLap(null);
+        } else {
+            // Set this lap as the new reference lap
+            studio.setReferenceLap(lap);
+        }
+
+        // Update only the reference button states across all tables
+        this.updateReferenceButtonStates();
+        
+        // Update all graphs to show/hide reference lap data
+        this.graphManager.updateAllGraphsForReferenceChange();
+    }
+
+    updateReferenceButtonStates(): void {
+        const referenceLap = studio.getReferenceLap();
+        
+        // Update all reference buttons across all session tables
+        this.sessionTabs.forEach(sessionTab => {
+            const sessionContent = document.getElementById(`content_${sessionTab.id}`);
+            if (!sessionContent) return;
+
+            const referenceButtons = sessionContent.querySelectorAll('.reference-btn-icon');
+            referenceButtons.forEach(button => {
+                const buttonElement = button as HTMLButtonElement;
+                const onclick = buttonElement.getAttribute('onclick');
+                
+                if (onclick) {
+                    // Extract sessionId and lapIndex from onclick attribute
+                    const match = onclick.match(/toggleReferenceLap\('([^']+)', (\d+)\)/);
+                    if (match) {
+                        const buttonSessionId = match[1];
+                        const buttonLapIndex = parseInt(match[2]);
+                        
+                        const isReferenceLap = referenceLap && 
+                            referenceLap.sessionId === buttonSessionId && 
+                            referenceLap.lapIndex === buttonLapIndex;
+                        
+                        // Update button appearance
+                        buttonElement.textContent = isReferenceLap ? '★' : '☆';
+                        buttonElement.title = isReferenceLap ? 'Remove as reference lap' : 'Set as reference lap';
+                        
+                        // Update row class
+                        const row = buttonElement.closest('tr');
+                        if (row) {
+                            if (isReferenceLap) {
+                                row.classList.add('reference-lap');
+                            } else {
+                                row.classList.remove('reference-lap');
+                            }
+                        }
+                    }
+                }
+            });
+        });
     }
 }
 

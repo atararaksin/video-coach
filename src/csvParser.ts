@@ -16,13 +16,13 @@ export class TelemetryCSVParser {
         
         // Parse telemetry data
         const datapoints = this.parseDatapoints(dataLines, channels);
-        
-        // Split into laps using beacon markers
-        const laps = this.splitIntoLaps(datapoints, headerInfo.beaconMarkers);
-
-        const bestLapIndex = laps.findIndex(lap => lap.lapTime === Math.min(...laps.map(lap => lap.lapTime)));
 
         const id = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Split into laps using beacon markers
+        const laps = this.createLaps(id, datapoints, headerInfo.beaconMarkers);
+
+        const bestLapIndex = laps.findIndex(lap => lap.lapTime === Math.min(...laps.map(lap => lap.lapTime)));
 
         const session: Session = {
             id: id,
@@ -118,7 +118,7 @@ export class TelemetryCSVParser {
         return datapoints;
     }
 
-    splitIntoLaps(datapoints: Datapoint[], beaconMarkers?: number[]): LapData[] {
+    createLaps(sessionId: string, datapoints: Datapoint[], beaconMarkers?: number[]): LapData[] {
         console.log('Splitting into laps:', { 
             totalDataPoints: datapoints.length, 
             beaconMarkers: beaconMarkers,
@@ -129,6 +129,7 @@ export class TelemetryCSVParser {
         if (!beaconMarkers || beaconMarkers.length === 0) {
             // If no beacon markers, return all data as one lap
             const lapData: LapData = {
+                sessionId: sessionId,
                 lapIndex: 0,
                 lapTime: datapoints.length > 0 ? datapoints[datapoints.length - 1].time : 0,
                 lapStartTime: datapoints[0].time,
@@ -158,6 +159,7 @@ export class TelemetryCSVParser {
             console.log(`Lap ${i}: ${startTime}s to ${endTime}s, ${lapDatapoints.length} data points`);
             
             const lapData: LapData = {
+                sessionId: sessionId,
                 lapIndex: i,
                 lapTime: lapTime,
                 lapStartTime: startTime,
@@ -176,6 +178,7 @@ export class TelemetryCSVParser {
         if (remainingData.length > 0) {
             const finalLapTime = remainingData[remainingData.length - 1].time - previousTime;
             const finalLap: LapData = {
+                sessionId: sessionId,
                 lapIndex: laps.length,
                 lapTime: finalLapTime,
                 lapStartTime: previousTime,

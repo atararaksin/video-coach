@@ -1,19 +1,24 @@
 import { Session, LapData } from './types.js';
-import { getDatapointForLap } from './lapUtils.js';
+import { getDatapointForLap, getReferenceDatapointForLap } from './lapUtils.js';
 
 export class GraphManager {
     private graphCounter: number = 0;
     private selectedLap: LapData | null = null;
+    private studio: any; // Reference to studio instance
+
+    constructor(studio: any) {
+        this.studio = studio;
+    }
 
     setSelectedLap(lap: LapData): void {
         this.selectedLap = lap;
         this.updateAllGraphs();
     }
 
-    addTelemetryGraph(sessionId: string, session: Session): void {
+    addTelemetryGraph(sessionId: string, session: Session): string {
         const graphId = `graph_${sessionId}_${this.graphCounter++}`;
         const container = document.getElementById(`graphs-container-${sessionId}`);
-        if (!container) return;
+        if (!container) return graphId;
 
         const graphDiv = document.createElement('div');
         graphDiv.className = 'graph-panel';
@@ -47,6 +52,7 @@ export class GraphManager {
         `;
 
         container.appendChild(graphDiv);
+        return graphId;
     }
 
     removeGraph(graphId: string): void {
@@ -92,6 +98,11 @@ export class GraphManager {
         });
     }
 
+    updateAllGraphsForReferenceChange(): void {
+        // Update all graphs when reference lap changes
+        this.updateAllGraphs();
+    }
+
     renderGraph(canvas: HTMLCanvasElement, lap: LapData, channel1: string, channel2: string): void {
         const timeResolution = 0.1;
         const timePoints: number[] = [];
@@ -116,8 +127,8 @@ export class GraphManager {
             {
                 label: channel1,
                 data: channel1Data,
-                borderColor: '#3498db',
-                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                borderColor: '#1e3a8a', // Dark blue
+                backgroundColor: 'rgba(30, 58, 138, 0.1)',
                 yAxisID: 'y',
                 tension: 0.1,
                 pointRadius: 0,
@@ -130,14 +141,59 @@ export class GraphManager {
             datasets.push({
                 label: channel2,
                 data: channel2Data,
-                borderColor: '#e74c3c',
-                backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                borderColor: '#92400e', // Dark brown
+                backgroundColor: 'rgba(146, 64, 14, 0.1)',
                 yAxisID: 'y1',
                 tension: 0.1,
                 pointRadius: 0,
                 pointHoverRadius: 3,
                 borderWidth: 1
             });
+        }
+
+        // Add reference lap data if available
+        const referenceLap = this.studio.getReferenceLap();
+        if (referenceLap && referenceLap !== lap) {
+            const refChannel1Data: number[] = [];
+            const refChannel2Data: number[] = [];
+
+            // Generate reference lap data using the same time points
+            for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += timeResolution) {
+                const refDatapoint = getReferenceDatapointForLap(lap, time, referenceLap);
+                if (refDatapoint) {
+                    refChannel1Data.push(refDatapoint.data.get(channel1) || 0);
+                    if (channel2) {
+                        refChannel2Data.push(refDatapoint.data.get(channel2) || 0);
+                    }
+                }
+            }
+
+            // Add reference lap datasets
+            datasets.push({
+                label: `${channel1} (Ref)`,
+                data: refChannel1Data,
+                borderColor: '#60a5fa', // Light blue
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                yAxisID: 'y',
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                borderWidth: 1
+            });
+
+            if (channel2 && refChannel2Data.length > 0) {
+                datasets.push({
+                    label: `${channel2} (Ref)`,
+                    data: refChannel2Data,
+                    borderColor: '#d97706', // Light brown
+                    backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.1,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    borderWidth: 1
+                });
+            }
         }
 
         // Create sector split annotations

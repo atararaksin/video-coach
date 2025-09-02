@@ -12,6 +12,7 @@ export interface Datapoint {
 }
 
 export interface LapData {
+    sessionId: string;
     lapIndex: number;
     lapTime: number;
     lapStartTime: number;
