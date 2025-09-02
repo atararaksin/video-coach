@@ -6,8 +6,8 @@ export class Studio {
     public track: Track;
     public readonly sessions: Map<string, Session> = new Map();
     public referenceLap: LapData | null = null;
-    public videoSyncOffset: number = 0; // Video time offset in seconds relative to session time
-    public currentTime: number = 0; // Current playback time in session time
+    public videoSyncOffsets: Map<string, number> = new Map(); // sessionId -> video time offset
+    public currentTimes: Map<string, number> = new Map(); // sessionId -> current playback time
 
     addSession(session: Session) {
         this.sessions.set(session.id, session);
@@ -15,6 +15,7 @@ export class Studio {
         // Is this is the first session added, initialize Track
         if (this.sessions.size == 1) {
             this.track = {
+                referenceLap: session.laps[session.bestLapIndex],
                 sectorSplits: splitIntoSectors(session.laps[session.bestLapIndex].datapoints)
             };
         }
@@ -36,7 +37,7 @@ export class Studio {
         // Reindex complete laps
         for (let i = 1; i < session.laps.length - 1; i++) {
             const lap = session.laps[i];
-            reindexLap(lap, session.laps[session.bestLapIndex]);
+            reindexLap(lap, this.track.referenceLap);
         }
     }
 
@@ -45,6 +46,9 @@ export class Studio {
         if (this.referenceLap && this.referenceLap.sessionId === sessionId) {
             this.referenceLap = null;
         }
+        // Clean up session-specific video sync data
+        this.videoSyncOffsets.delete(sessionId);
+        this.currentTimes.delete(sessionId);
     }
 
     setReferenceLap(lap: LapData | null) {

@@ -48,8 +48,8 @@ class RacingDataStudio {
 
     setupTimeSync(): void {
         // Set up the time synchronization callback
-        this.videoManager.setTimeUpdateCallback((time: number, source: 'video' | 'ui') => {
-            this.updateAllUIToTime(time, source);
+        this.videoManager.setTimeUpdateCallback((time: number, source: 'video' | 'ui', sessionId: string) => {
+            this.updateAllUIToTime(time, source, sessionId);
         });
     }
 
@@ -261,32 +261,66 @@ class RacingDataStudio {
         `;
     }
 
-    updateAllUIToTime(time: number, source: 'video' | 'ui'): void {
-        if (!this.activeSessionId) return;
+    updateAllUIToTime(time: number, source: 'video' | 'ui', sessionId: string): void {
+        // Update current time for this session in studio
+        studio.currentTimes.set(sessionId, time);
 
-        // Update current time in studio
-        studio.currentTime = time;
+        // Only update UI elements if this is the currently active session
+        if (sessionId !== this.activeSessionId) {
+            // For non-active sessions, only update video time if needed
+            if (source !== 'video') {
+                this.videoManager.updateVideoTime(time, sessionId);
+            }
+            return;
+        }
 
-        // Find which lap this time corresponds to
-        const session = this.sessionTabs.find(tab => tab.id === this.activeSessionId)?.session;
+        // Find which lap this time corresponds to for the active session
+        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
         if (!session) return;
 
         // Find the lap that contains this time
         const currentLap = session.laps.find(lap => 
-            time >= lap.lapStartTime && time <= lap.lapStartTime + lap.lapTime
+            time >= lap.lapStartTime && time < lap.lapStartTime + lap.lapTime
         );
 
         if (currentLap) {
-            // Update lap selection in table if it's different
-            this.selectLap(this.activeSessionId, currentLap.lapIndex);
+            // Update visual selection in the lap table
+            this.updateLapSelectionVisual(sessionId, currentLap.lapIndex);
+            
+            // Update graph manager's selected lap if it's different
+            if (!this.graphManager.getSelectedLap(sessionId) || 
+                this.graphManager.getSelectedLap(sessionId)?.lapIndex !== currentLap.lapIndex) {
+                this.graphManager.setSelectedLap(currentLap);
+            }
+            
+            // Update graph position indicators
+            this.graphManager.updateCurrentTimePosition(time, sessionId);
         }
 
         // Update video time if the source is not video (to avoid feedback loop)
         if (source !== 'video') {
-            this.videoManager.updateVideoTime(time, this.activeSessionId);
+            this.videoManager.updateVideoTime(time, sessionId);
         }
+    }
 
-        // TODO: Add graph position indicator updates here when implemented
+    updateLapSelectionVisual(sessionId: string, lapIndex: number): void {
+        // Update visual selection in table without triggering graph updates
+        const sessionContent = document.getElementById(`content_${sessionId}`);
+        if (sessionContent) {
+            // Remove previous selection
+            sessionContent.querySelectorAll('.lap-table tbody tr').forEach(row => {
+                row.classList.remove('selected');
+            });
+            
+            // Find the row by matching the exact lapIndex in the onclick attribute
+            const rows = sessionContent.querySelectorAll('.lap-table tbody tr');
+            rows.forEach(row => {
+                const onclick = row.getAttribute('onclick');
+                if (onclick && onclick === `selectLap('${sessionId}', ${lapIndex})`) {
+                    row.classList.add('selected');
+                }
+            });
+        }
     }
 
     formatTime(seconds: number): string {
@@ -411,7 +445,7 @@ class RacingDataStudio {
         this.graphManager.setSelectedLap(lap);
 
         // Update video and other UI to the start of this lap
-        this.updateAllUIToTime(lap.lapStartTime, 'ui');
+        this.updateAllUIToTime(lap.lapStartTime, 'ui', sessionId);
     }
 
     addDefaultGraph(sessionTab: SessionTab): void {

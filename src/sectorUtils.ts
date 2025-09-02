@@ -100,7 +100,7 @@ export function splitIntoSectors(datapoints: Datapoint[]): Point[] {
     
     for (const period of nonDecelerationPeriods) {
         const duration = datapoints[period.end].time - datapoints[period.start].time;
-        //if (duration >= 3.0) {
+        if (duration >= 2.0) {
             // Find the next deceleration period to apply 0.3s margin
             const nextDecelerationStart = findNextDecelerationStart(datapoints, period.end, decelerationPeriods);
             let splitTime = datapoints[period.end].time;
@@ -115,7 +115,7 @@ export function splitIntoSectors(datapoints: Datapoint[]): Point[] {
             if (splitIndex > 0 && splitIndex < datapoints.length - 1) {
                 splitPoints.push(splitIndex);
             }
-        //}
+        }
     }
     
     // Remove duplicates and sort
@@ -194,7 +194,7 @@ function findDecelerationPeriods(datapoints: Datapoint[]): Period[] {
 
     // Step 2: Find deceleration periods in sampled data
     const decelerationPeriods: Period[] = [];
-    const minDecelerationThreshold = -1.0; // - threshold for significant deceleration
+    const minDecelerationThreshold = -4.0; // - threshold for significant deceleration
 
     for (let i = 1; i < sampledData.length; i++) {
         const currentSample = sampledData[i];

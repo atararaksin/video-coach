@@ -22,12 +22,14 @@ export class TelemetryCSVParser {
         // Split into laps using beacon markers
         const laps = this.createLaps(id, datapoints, headerInfo.beaconMarkers);
 
-        const bestLapIndex = laps.findIndex(lap => lap.lapTime === Math.min(...laps.map(lap => lap.lapTime)));
+        // Filter out incomplete laps (first and last are usually incomplete)
+        const completeLaps = laps.slice(1, -1);
+        const bestLap = completeLaps.find(lap => lap.lapTime === Math.min(...completeLaps.map(lap => lap.lapTime)));
 
         const session: Session = {
             id: id,
             laps: laps,
-            bestLapIndex: bestLapIndex,
+            bestLapIndex: bestLap.lapIndex,
             duration: headerInfo.duration ? [parseFloat(headerInfo.duration)] : [],
             date: headerInfo.date,
             time: headerInfo.time,

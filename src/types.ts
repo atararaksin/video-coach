@@ -45,5 +45,6 @@ export interface Point {
 }
 
 export interface Track {
+    referenceLap: LapData; // Datapoints used to index all other laps from all sessions
     sectorSplits: Point[];
 }

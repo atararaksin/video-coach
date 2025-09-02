@@ -3,16 +3,21 @@ import { getDatapointForLap, getReferenceDatapointForLap } from './lapUtils.js';
 
 export class GraphManager {
     private graphCounter: number = 0;
-    private selectedLap: LapData | null = null;
+    private selectedLaps: Map<string, LapData | null> = new Map(); // sessionId -> selected lap
     private studio: any; // Reference to studio instance
+    private currentTimePositions: Map<string, number> = new Map(); // sessionId -> current time position within the lap
 
     constructor(studio: any) {
         this.studio = studio;
     }
 
     setSelectedLap(lap: LapData): void {
-        this.selectedLap = lap;
-        this.updateAllGraphs();
+        this.selectedLaps.set(lap.sessionId, lap);
+        this.updateAllGraphsForSession(lap.sessionId);
+    }
+
+    getSelectedLap(sessionId: string): LapData | null {
+        return this.selectedLaps.get(sessionId) || null;
     }
 
     addTelemetryGraph(sessionId: string, session: Session): string {
@@ -79,18 +84,28 @@ export class GraphManager {
 
         // Destroy existing chart if it exists
         if ((canvas as any).chart) {
-            (canvas as any).chart.destroy();
+            try {
+                (canvas as any).chart.destroy();
+            } catch (e) {
+                console.warn('Error destroying chart:', e);
+            }
             (canvas as any).chart = null; // Clear the reference
+            delete (canvas as any).chart; // Remove the property entirely
         }
 
-        if (!channel1 || !this.selectedLap) {
+        // Extract sessionId from graphId (format: graph_sessionId_counter)
+        // The graphId format is: graph_session_timestamp_randomId_counter
+        // We need to extract everything except "graph_" prefix and "_counter" suffix
+        const parts = graphId.split('_');
+        const sessionId = parts.slice(1, -1).join('_'); // Remove first part (graph) and last part (counter)
+        const selectedLap = this.selectedLaps.get(sessionId);
+
+        if (!channel1 || !selectedLap) {
             return; // No channel selected or no lap selected
         }
 
-        // Small delay to ensure chart is fully destroyed before creating new one
-        setTimeout(() => {
-            this.renderGraph(canvas, this.selectedLap!, channel1, channel2);
-        }, 10);
+        // Render the graph directly without timeout since we properly destroyed the chart
+        this.renderGraph(canvas, selectedLap, channel1, channel2);
     }
 
     updateAllGraphs(): void {
@@ -102,9 +117,72 @@ export class GraphManager {
         });
     }
 
+    updateAllGraphsForSession(sessionId: string): void {
+        // Find graph canvases only for this specific session
+        const sessionGraphs = document.querySelectorAll(`#graphs-container-${sessionId} .graph-panel`);
+        sessionGraphs.forEach(panel => {
+            const graphId = panel.id;
+            this.updateGraph(graphId);
+        });
+    }
+
     updateAllGraphsForReferenceChange(): void {
         // Update all graphs when reference lap changes
         this.updateAllGraphs();
+    }
+
+    updateCurrentTimePosition(sessionTime: number, sessionId: string): void {
+        const selectedLap = this.selectedLaps.get(sessionId);
+        if (!selectedLap) return;
+
+        // Calculate position within the current lap (0 to lap duration)
+        const currentTimePosition = sessionTime - selectedLap.lapStartTime;
+        this.currentTimePositions.set(sessionId, currentTimePosition);
+        
+        // Update position indicator only on graphs for this session
+        this.updatePositionIndicatorOnGraphsForSession(sessionId, currentTimePosition);
+    }
+
+    private updatePositionIndicatorOnGraphsForSession(sessionId: string, currentTimePosition: number): void {
+        const selectedLap = this.selectedLaps.get(sessionId);
+        if (!selectedLap) return;
+
+        const timeResolution = 0.1;
+        const indexPosition = currentTimePosition / timeResolution;
+
+        // Find graph canvases only for this specific session
+        const sessionGraphs = document.querySelectorAll(`#graphs-container-${sessionId} .graph-panel`);
+        sessionGraphs.forEach(panel => {
+            const canvas = document.getElementById(`${panel.id}_canvas`) as HTMLCanvasElement;
+            if (canvas && (canvas as any).chart) {
+                const chart = (canvas as any).chart;
+                
+                // Update or add the current position annotation
+                if (chart.options.plugins.annotation.annotations) {
+                    chart.options.plugins.annotation.annotations.currentPosition = {
+                        type: 'line',
+                        xMin: indexPosition,
+                        xMax: indexPosition,
+                        borderColor: 'rgba(255, 0, 0, 0.8)',
+                        borderWidth: 1,
+                        display: true, // Make sure it's visible
+                        label: {
+                            display: true,
+                            content: `${currentTimePosition.toFixed(1)}s`,
+                            position: 'end',
+                            backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                            color: 'white',
+                            font: {
+                                size: 10
+                            }
+                        }
+                    };
+                    
+                    // Update the chart immediately without animation
+                    chart.update('none');
+                }
+            }
+        });
     }
 
     renderGraph(canvas: HTMLCanvasElement, lap: LapData, channel1: string, channel2: string): void {
@@ -210,13 +288,13 @@ export class GraphManager {
                     type: 'line',
                     xMin: indexPosition,
                     xMax: indexPosition,
-                    borderColor: 'rgba(255, 7, 15, 0.8)',
+                    borderColor: 'rgba(126, 125, 125, 0.8)',
                     borderWidth: 1,
                     label: {
                         display: true,
                         content: `S${index + 1}`,
                         position: 'start',
-                        backgroundColor: 'rgba(255, 7, 15, 0.8)',
+                        backgroundColor: 'rgba(126, 125, 125, 0.8)',
                         color: 'white',
                         font: {
                             size: 10
@@ -225,6 +303,26 @@ export class GraphManager {
                 };
             });
         }
+
+        // Add current position annotation placeholder
+        sectorAnnotations.currentPosition = {
+            type: 'line',
+            xMin: 0,
+            xMax: 0,
+            borderColor: 'rgba(255, 0, 0, 0.8)',
+            borderWidth: 1,
+            display: false, // Initially hidden
+            label: {
+                display: true,
+                content: '0.0s',
+                position: 'end',
+                backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                color: 'white',
+                font: {
+                    size: 10
+                }
+            }
+        };
 
         // Create Chart.js configuration
         const config = {
@@ -236,6 +334,7 @@ export class GraphManager {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false, // Disable animations to prevent replay during updates
                 interaction: {
                     mode: 'index' as const,
                     intersect: false,

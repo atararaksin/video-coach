@@ -50,22 +50,20 @@ function rebuildDatapointsToMatchReferenceLapDatapointsOnDistance(datapoints: Da
     }
 
     interpolatedDatapoints.push(datapoints[datapoints.length - 1]);
-
-
     
     return refDatapoints.map(refDp => findClosestDatapoint(interpolatedDatapoints, refDp));
 }
 
 export function getDatapointForLap(lap: LapData, time: number): Datapoint {
     const timeBetweenDatapoints = lap.lapTime / lap.timeToDistanceIndex.length;
-    const datapointIndex = Math.round((time - lap.lapStartTime) / timeBetweenDatapoints);
-    return lap.datapoints[datapointIndex];
+    const index = Math.min(lap.timeToDistanceIndex.length - 1, Math.round((time - lap.lapStartTime) / timeBetweenDatapoints));
+    return lap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
 }
 
 // For a given base lap at a given point in time, gives a datapoint from the reference lap
 // that is distance-matched to the base lap's datapoint
 export function getReferenceDatapointForLap(lap: LapData, time: number, referenceLap: LapData): Datapoint {
     const timeBetweenDatapoints = lap.lapTime / lap.timeToDistanceIndex.length;
-    const datapointIndex = Math.round((time - lap.lapStartTime) / timeBetweenDatapoints);
-    return referenceLap.datapoints[datapointIndex];
+    const index = Math.min(lap.timeToDistanceIndex.length - 1, Math.round((time - lap.lapStartTime) / timeBetweenDatapoints));
+    return referenceLap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
 }
