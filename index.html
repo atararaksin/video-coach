@@ -292,6 +292,131 @@
             position: relative;
             height: 300px;
         }
+
+        .video-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .video-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .video-header h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .video-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .load-video-btn, .sync-video-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+
+        .load-video-btn:hover, .sync-video-btn:hover {
+            background: #2980b9;
+        }
+
+        .sync-video-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .video-content {
+            position: relative;
+        }
+
+        .video-placeholder {
+            background: #f8f9fa;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 3rem;
+            text-align: center;
+            color: #666;
+        }
+
+        .video-placeholder p {
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+
+        .video-player {
+            width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+        }
+
+        .sync-controls {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .sync-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .sync-row label {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .sync-row select {
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            min-width: 200px;
+        }
+
+        .confirm-sync-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .confirm-sync-btn:hover {
+            background: #219a52;
+        }
+
+        .cancel-sync-btn {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .cancel-sync-btn:hover {
+            background: #7f8c8d;
+        }
     </style>
 </head>
 <body>

@@ -6,6 +6,8 @@ export class Studio {
     public track: Track;
     public readonly sessions: Map<string, Session> = new Map();
     public referenceLap: LapData | null = null;
+    public videoSyncOffset: number = 0; // Video time offset in seconds relative to session time
+    public currentTime: number = 0; // Current playback time in session time
 
     addSession(session: Session) {
         this.sessions.set(session.id, session);

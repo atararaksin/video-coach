@@ -2,6 +2,7 @@ import { Session, LapData } from './types.js';
 import { TelemetryCSVParser } from './csvParser.js';
 import { Studio } from './studio.js';
 import { GraphManager } from './graphManager.js';
+import { VideoManager } from './videoManager.js';
 
 const studio = new Studio();
 
@@ -16,11 +17,14 @@ class RacingDataStudio {
     private sessionTabs: SessionTab[] = [];
     private activeSessionId: string | null = null;
     private graphManager: GraphManager;
+    private videoManager: VideoManager;
 
     constructor() {
         this.parser = new TelemetryCSVParser();
         this.graphManager = new GraphManager(studio);
+        this.videoManager = new VideoManager(studio);
         this.setupGlobalFunctions();
+        this.setupTimeSync();
     }
 
     setupGlobalFunctions(): void {
@@ -34,6 +38,19 @@ class RacingDataStudio {
         (window as any).updateGraph = (graphId: string) => this.updateGraph(graphId);
         (window as any).selectLap = (sessionId: string, lapIndex: number) => this.selectLap(sessionId, lapIndex);
         (window as any).toggleReferenceLap = (sessionId: string, lapIndex: number) => this.toggleReferenceLap(sessionId, lapIndex);
+        
+        // Video-related functions
+        (window as any).loadVideo = (sessionId: string) => this.videoManager.loadVideo(sessionId);
+        (window as any).syncVideo = (sessionId: string) => this.videoManager.syncVideo(sessionId);
+        (window as any).confirmSync = (sessionId: string) => this.videoManager.confirmSync(sessionId);
+        (window as any).cancelSync = (sessionId: string) => this.videoManager.cancelSync(sessionId);
+    }
+
+    setupTimeSync(): void {
+        // Set up the time synchronization callback
+        this.videoManager.setTimeUpdateCallback((time: number, source: 'video' | 'ui') => {
+            this.updateAllUIToTime(time, source);
+        });
     }
 
     importSession(): void {
@@ -192,7 +209,42 @@ class RacingDataStudio {
                     ${tableRows}
                 </tbody>
             </table>
+            ${this.generateVideoPanel(session)}
             ${this.generateTelemetryGraphs(session)}
+        `;
+    }
+
+    generateVideoPanel(session: Session): string {
+        return `
+            <div class="video-panel" id="video-panel-${session.id}">
+                <div class="video-header">
+                    <h3>Video</h3>
+                    <div class="video-controls">
+                        <input type="file" id="video-file-${session.id}" accept="video/*" style="display: none;">
+                        <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video</button>
+                        <button class="sync-video-btn" onclick="syncVideo('${session.id}')" disabled>Sync with Lap</button>
+                    </div>
+                </div>
+                <div class="video-content">
+                    <div class="video-placeholder" id="video-placeholder-${session.id}">
+                        <p>No video loaded</p>
+                        <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video File</button>
+                    </div>
+                    <video id="video-${session.id}" class="video-player" controls style="display: none;">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div class="sync-controls" id="sync-controls-${session.id}" style="display: none;">
+                    <div class="sync-row">
+                        <label for="lap-select-${session.id}">Sync with lap:</label>
+                        <select id="lap-select-${session.id}">
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                        <button class="confirm-sync-btn" onclick="confirmSync('${session.id}')">Confirm Sync</button>
+                        <button class="cancel-sync-btn" onclick="cancelSync('${session.id}')">Cancel</button>
+                    </div>
+                </div>
+            </div>
         `;
     }
 
@@ -207,6 +259,34 @@ class RacingDataStudio {
                 </div>
             </div>
         `;
+    }
+
+    updateAllUIToTime(time: number, source: 'video' | 'ui'): void {
+        if (!this.activeSessionId) return;
+
+        // Update current time in studio
+        studio.currentTime = time;
+
+        // Find which lap this time corresponds to
+        const session = this.sessionTabs.find(tab => tab.id === this.activeSessionId)?.session;
+        if (!session) return;
+
+        // Find the lap that contains this time
+        const currentLap = session.laps.find(lap => 
+            time >= lap.lapStartTime && time <= lap.lapStartTime + lap.lapTime
+        );
+
+        if (currentLap) {
+            // Update lap selection in table if it's different
+            this.selectLap(this.activeSessionId, currentLap.lapIndex);
+        }
+
+        // Update video time if the source is not video (to avoid feedback loop)
+        if (source !== 'video') {
+            this.videoManager.updateVideoTime(time, this.activeSessionId);
+        }
+
+        // TODO: Add graph position indicator updates here when implemented
     }
 
     formatTime(seconds: number): string {
@@ -278,6 +358,9 @@ class RacingDataStudio {
 
         studio.removeSession(sessionId);
         
+        // Clean up video resources
+        this.videoManager.removeVideo(sessionId);
+        
         // Update all graphs in case the reference lap was removed
         this.graphManager.updateAllGraphsForReferenceChange();
     }
@@ -326,6 +409,9 @@ class RacingDataStudio {
 
         // Update graphs with selected lap
         this.graphManager.setSelectedLap(lap);
+
+        // Update video and other UI to the start of this lap
+        this.updateAllUIToTime(lap.lapStartTime, 'ui');
     }
 
     addDefaultGraph(sessionTab: SessionTab): void {

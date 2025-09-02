@@ -80,13 +80,17 @@ export class GraphManager {
         // Destroy existing chart if it exists
         if ((canvas as any).chart) {
             (canvas as any).chart.destroy();
+            (canvas as any).chart = null; // Clear the reference
         }
 
         if (!channel1 || !this.selectedLap) {
             return; // No channel selected or no lap selected
         }
 
-        this.renderGraph(canvas, this.selectedLap, channel1, channel2);
+        // Small delay to ensure chart is fully destroyed before creating new one
+        setTimeout(() => {
+            this.renderGraph(canvas, this.selectedLap!, channel1, channel2);
+        }, 10);
     }
 
     updateAllGraphs(): void {
