@@ -30,7 +30,7 @@ export class TelemetryCSVParser {
             id: id,
             laps: laps,
             bestLapIndex: bestLap.lapIndex,
-            duration: headerInfo.duration ? [parseFloat(headerInfo.duration)] : [],
+            duration: parseFloat(headerInfo.duration),
             date: headerInfo.date,
             time: headerInfo.time,
             channels: channels

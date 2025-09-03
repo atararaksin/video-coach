@@ -16,7 +16,7 @@ export interface LapData {
     lapIndex: number;
     lapTime: number;
     lapStartTime: number;
-    sectorTimes: number[];
+    sectorTimes: number[]; // Durations
     sectorStartTimes: number[];
     timeToDistanceIndex: TimeToDistanceIndex[];
     datapoints: Datapoint[];
@@ -33,7 +33,7 @@ export interface Session {
     id: string;
     laps: LapData[];
     bestLapIndex: number;
-    duration: number[];
+    duration: number;
     date?: string;
     time?: string;
     channels: string[];
@@ -46,5 +46,5 @@ export interface Point {
 
 export interface Track {
     referenceLap: LapData; // Datapoints used to index all other laps from all sessions
-    sectorSplits: Point[];
+    sectorSplits: Point[]; // Includes start of lap point as the first element
 }

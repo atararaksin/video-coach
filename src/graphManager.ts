@@ -406,28 +406,28 @@ export class GraphManager {
 
     private addClickEventListener(canvas: HTMLCanvasElement, chart: any, lap: LapData, timeResolution: number): void {
         canvas.addEventListener('click', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            
-            // Get the chart's scale information
-            const canvasPosition = (window as any).Chart.helpers.getRelativePosition(event, chart);
-            const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
-            
-            if (dataX !== null && dataX >= 0) {
-                // Convert the x-axis index back to time within the lap
-                const timeInLap = dataX * timeResolution;
+            try {
+                // Get the chart's scale information using Chart.js helper
+                const canvasPosition = (window as any).Chart.helpers.getRelativePosition(event, chart);
+                const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
                 
-                // Calculate the absolute session time
-                const sessionTime = lap.lapStartTime + timeInLap;
-                
-                // Ensure the time is within the lap bounds
-                if (timeInLap >= 0 && timeInLap <= lap.lapTime) {
-                    // Trigger time update through the studio's time sync system
-                    if (this.studio && this.studio.updateAllUIToTime) {
-                        this.studio.updateAllUIToTime(sessionTime, 'ui', lap.sessionId);
+                if (dataX !== null && dataX >= 0) {
+                    // Convert the x-axis index back to time within the lap
+                    const timeInLap = dataX * timeResolution;
+                    
+                    // Calculate the absolute session time
+                    const sessionTime = lap.lapStartTime + timeInLap;
+                    
+                    // Ensure the time is within the lap bounds
+                    if (timeInLap >= 0 && timeInLap <= lap.lapTime) {
+                        // Trigger time update through the studio's time sync system
+                        if (this.studio && this.studio.updateAllUIToTime) {
+                            this.studio.updateAllUIToTime(sessionTime, 'ui', lap.sessionId);
+                        }
                     }
                 }
+            } catch (error) {
+                console.warn('Error handling graph click:', error);
             }
         });
     }

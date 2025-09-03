@@ -417,6 +417,126 @@
         .cancel-sync-btn:hover {
             background: #7f8c8d;
         }
+
+        /* Navigation Panel Styles */
+        .video-content-wrapper {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .navigation-panel {
+            flex-shrink: 0;
+            min-width: fit-content;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .navigation-header {
+            background: #e9ecef;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .navigation-header h4 {
+            margin: 0;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .navigation-table-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .navigation-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+
+        .navigation-table th {
+            background: #f8f9fa;
+            padding: 0.25rem 0.5rem;
+            text-align: center;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .navigation-table td {
+            padding: 0.25rem 0.5rem;
+            text-align: center;
+            border-bottom: 1px solid #f1f3f4;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .navigation-table td:hover {
+            background: #e3f2fd;
+        }
+
+        .lap-index-cell, .lap-time-cell {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-weight: 500;
+        }
+
+        .lap-start-cell {
+            font-weight: 500;
+            color: #28a745;
+        }
+
+        .lap-start-cell:hover {
+            background: #d4edda !important;
+        }
+
+        .sector-cell {
+            font-weight: 500;
+            color: #007bff;
+        }
+
+        .sector-cell:hover {
+            background: #cce7ff !important;
+        }
+
+        .navigation-table tr.current-lap {
+            background: #e3f2fd !important;
+            border-left: 3px solid #2196f3;
+        }
+
+        .navigation-table tr.current-lap:hover {
+            background: #e3f2fd !important;
+        }
+
+        .navigation-table tr.current-lap td:hover {
+            background: #bbdefb !important;
+        }
+
+        .video-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .video-content-wrapper {
+                flex-direction: column;
+            }
+            
+            .navigation-panel {
+                width: 100%;
+                order: 2;
+            }
+            
+            .video-content {
+                order: 1;
+            }
+        }
     </style>
 </head>
 <body>

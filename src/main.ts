@@ -3,6 +3,7 @@ import { TelemetryCSVParser } from './csvParser.js';
 import { Studio } from './studio.js';
 import { GraphManager } from './graphManager.js';
 import { VideoManager } from './videoManager.js';
+import { getLapAtTimeForSession, getReferenceDatapointForSession } from './sessionUtils.js';
 
 const studio = new Studio();
 
@@ -43,6 +44,11 @@ class RacingDataStudio {
         // Video-related functions
         (window as any).loadVideo = (sessionId: string) => this.videoManager.loadVideo(sessionId);
         (window as any).syncVideo = (sessionId: string) => this.videoManager.syncVideo(sessionId);
+        
+        // Navigation panel functions
+        (window as any).jumpToLap = (sessionId: string, lapIndex: number) => this.jumpToLap(sessionId, lapIndex);
+        (window as any).jumpToLapStart = (sessionId: string, lapIndex: number) => this.jumpToLapStart(sessionId, lapIndex);
+        (window as any).jumpToSector = (sessionId: string, lapIndex: number, sectorIndex: number) => this.jumpToSector(sessionId, lapIndex, sectorIndex);
     }
 
     setupTimeSync(): void {
@@ -221,6 +227,8 @@ class RacingDataStudio {
     }
 
     generateVideoPanel(session: Session): string {
+        const navigationTable = this.generateNavigationTable(session);
+        
         return `
             <div class="video-panel" id="video-panel-${session.id}">
                 <div class="video-header">
@@ -231,14 +239,76 @@ class RacingDataStudio {
                         <button class="sync-video-btn" onclick="syncVideo('${session.id}')" disabled>Sync with Current Time</button>
                     </div>
                 </div>
-                <div class="video-content">
-                    <div class="video-placeholder" id="video-placeholder-${session.id}">
-                        <p>No video loaded</p>
-                        <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video File</button>
+                <div class="video-content-wrapper">
+                    ${navigationTable}
+                    <div class="video-content">
+                        <div class="video-placeholder" id="video-placeholder-${session.id}">
+                            <p>No video loaded</p>
+                            <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video File</button>
+                        </div>
+                        <video id="video-${session.id}" class="video-player" controls style="display: none;">
+                            Your browser does not support the video tag.
+                        </video>
                     </div>
-                    <video id="video-${session.id}" class="video-player" controls style="display: none;">
-                        Your browser does not support the video tag.
-                    </video>
+                </div>
+            </div>
+        `;
+    }
+
+    generateNavigationTable(session: Session): string {
+        // Filter out incomplete laps (first and last are usually incomplete)
+        const completeLaps = session.laps.slice(1, -1);
+        
+        if (completeLaps.length === 0) {
+            return '<div class="navigation-panel"></div>';
+        }
+
+        // Get sector count from studio track
+        const sectorCount = studio.track ? studio.track.sectorSplits.length - 1 : 0;
+        
+        // Generate sector headers
+        const sectorHeaders = Array.from({length: sectorCount}, (_, i) => 
+            `<th>S${i + 1}</th>`
+        ).join('');
+
+        // Generate table rows
+        const tableRows = completeLaps.map(lap => {
+            // Generate sector cells using sectorStartTimes
+            const sectorCells = lap.sectorStartTimes
+                ? lap.sectorStartTimes.slice(1,).map((startTime, index) => 
+                    `<td class="sector-cell" onclick="jumpToSector('${session.id}', ${lap.lapIndex}, ${index})" title="Jump to sector ${index + 1}">S${index + 1}</td>`
+                  ).join('')
+                : Array.from({length: sectorCount}, () => '<td class="sector-cell">-</td>').join('');
+
+            return `
+                <tr>
+                    <td class="lap-index-cell" onclick="jumpToLap('${session.id}', ${lap.lapIndex})" title="Jump to corresponding position in this lap">${lap.lapIndex}</td>
+                    <td class="lap-time-cell" onclick="jumpToLap('${session.id}', ${lap.lapIndex})" title="Jump to corresponding position in this lap">${this.formatTime(lap.lapTime)}</td>
+                    <td class="lap-start-cell" onclick="jumpToLapStart('${session.id}', ${lap.lapIndex})" title="Jump to start of this lap">Start</td>
+                    ${sectorCells}
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="navigation-panel">
+                <div class="navigation-header">
+                    <h4>Quick Navigation</h4>
+                </div>
+                <div class="navigation-table-container">
+                    <table class="navigation-table">
+                        <thead>
+                            <tr>
+                                <th>Lap</th>
+                                <th>Time</th>
+                                <th>Start</th>
+                                ${sectorHeaders}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;
@@ -258,6 +328,8 @@ class RacingDataStudio {
     }
 
     updateAllUIToTime(time: number, source: 'video' | 'ui', sessionId: string): void {
+        if (source === 'ui') console.log("Jumping to ", time);
+        
         // Update current time for this session in studio
         studio.currentTimes.set(sessionId, time);
 
@@ -275,9 +347,7 @@ class RacingDataStudio {
         if (!session) return;
 
         // Find the lap that contains this time
-        const currentLap = session.laps.find(lap => 
-            time >= lap.lapStartTime && time < lap.lapStartTime + lap.lapTime
-        );
+        const currentLap = getLapAtTimeForSession(session, time);
 
         if (currentLap) {
             // Update visual selection in the lap table
@@ -314,6 +384,29 @@ class RacingDataStudio {
                 const onclick = row.getAttribute('onclick');
                 if (onclick && onclick === `selectLap('${sessionId}', ${lapIndex})`) {
                     row.classList.add('selected');
+                }
+            });
+        }
+
+        // Also update navigation panel highlighting
+        this.updateNavigationPanelHighlight(sessionId, lapIndex);
+    }
+
+    updateNavigationPanelHighlight(sessionId: string, lapIndex: number): void {
+        const videoPanel = document.getElementById(`video-panel-${sessionId}`);
+        if (videoPanel) {
+            // Remove previous highlighting from navigation table
+            videoPanel.querySelectorAll('.navigation-table tbody tr').forEach(row => {
+                row.classList.remove('current-lap');
+            });
+            
+            // Find and highlight the current lap row in navigation table
+            const navigationRows = videoPanel.querySelectorAll('.navigation-table tbody tr');
+            navigationRows.forEach(row => {
+                // Check if any cell in this row has a click handler for this lapIndex
+                const lapCell = row.querySelector(`[onclick*="jumpToLap('${sessionId}', ${lapIndex})"]`);
+                if (lapCell) {
+                    row.classList.add('current-lap');
                 }
             });
         }
@@ -535,6 +628,60 @@ class RacingDataStudio {
                 }
             });
         });
+    }
+
+    jumpToLap(sessionId: string, lapIndex: number): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        // Get the current time for this session
+        const currentTime = studio.currentTimes.get(sessionId) || 0;
+
+        const currentLap = getLapAtTimeForSession(session, currentTime);
+
+        if (currentLap.lapIndex == lapIndex) return; // Same lap
+
+        // Find the target lap
+        const targetLap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!targetLap) return;
+        
+        // Use getReferenceDatapointForSession to find corresponding position in target lap
+        const referenceDatapoint = getReferenceDatapointForSession(session, currentTime, targetLap);
+        
+        if (referenceDatapoint) {
+            this.updateAllUIToTime(referenceDatapoint.time, 'ui', sessionId);
+        } else {
+            // Fallback to lap start if no reference datapoint found
+            this.updateAllUIToTime(targetLap.lapStartTime, 'ui', sessionId);
+        }
+    }
+
+    jumpToLapStart(sessionId: string, lapIndex: number): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        // Find the target lap
+        const targetLap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!targetLap) return;
+
+        // Jump to the start of the lap
+        this.updateAllUIToTime(targetLap.lapStartTime, 'ui', sessionId);
+    }
+
+    jumpToSector(sessionId: string, lapIndex: number, sectorIndex: number): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        // Find the target lap
+        const targetLap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!targetLap || !targetLap.sectorStartTimes) return;
+
+        // Check if the sector index is valid
+        if (sectorIndex < 0 || sectorIndex >= targetLap.sectorStartTimes.length) return;
+
+        // Jump to the sector start time
+        const sectorStartTime = targetLap.sectorStartTimes[sectorIndex];
+        this.updateAllUIToTime(sectorStartTime, 'ui', sessionId);
     }
 }
 
