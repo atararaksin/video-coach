@@ -396,8 +396,40 @@ export class GraphManager {
         // Create the chart
         const ctx = canvas.getContext('2d');
         if (ctx) {
-            (canvas as any).chart = new (window as any).Chart(ctx, config);
+            const chart = new (window as any).Chart(ctx, config);
+            (canvas as any).chart = chart;
+            
+            // Add click event listener for jumping to time
+            this.addClickEventListener(canvas, chart, lap, timeResolution);
         }
+    }
+
+    private addClickEventListener(canvas: HTMLCanvasElement, chart: any, lap: LapData, timeResolution: number): void {
+        canvas.addEventListener('click', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            // Get the chart's scale information
+            const canvasPosition = (window as any).Chart.helpers.getRelativePosition(event, chart);
+            const dataX = chart.scales.x.getValueForPixel(canvasPosition.x);
+            
+            if (dataX !== null && dataX >= 0) {
+                // Convert the x-axis index back to time within the lap
+                const timeInLap = dataX * timeResolution;
+                
+                // Calculate the absolute session time
+                const sessionTime = lap.lapStartTime + timeInLap;
+                
+                // Ensure the time is within the lap bounds
+                if (timeInLap >= 0 && timeInLap <= lap.lapTime) {
+                    // Trigger time update through the studio's time sync system
+                    if (this.studio && this.studio.updateAllUIToTime) {
+                        this.studio.updateAllUIToTime(sessionTime, 'ui', lap.sessionId);
+                    }
+                }
+            }
+        });
     }
 
     private formatTime(seconds: number): string {

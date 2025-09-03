@@ -25,6 +25,7 @@ class RacingDataStudio {
         this.videoManager = new VideoManager(studio);
         this.setupGlobalFunctions();
         this.setupTimeSync();
+        this.setupStudioTimeSync();
     }
 
     setupGlobalFunctions(): void {
@@ -42,8 +43,6 @@ class RacingDataStudio {
         // Video-related functions
         (window as any).loadVideo = (sessionId: string) => this.videoManager.loadVideo(sessionId);
         (window as any).syncVideo = (sessionId: string) => this.videoManager.syncVideo(sessionId);
-        (window as any).confirmSync = (sessionId: string) => this.videoManager.confirmSync(sessionId);
-        (window as any).cancelSync = (sessionId: string) => this.videoManager.cancelSync(sessionId);
     }
 
     setupTimeSync(): void {
@@ -51,6 +50,13 @@ class RacingDataStudio {
         this.videoManager.setTimeUpdateCallback((time: number, source: 'video' | 'ui', sessionId: string) => {
             this.updateAllUIToTime(time, source, sessionId);
         });
+    }
+
+    setupStudioTimeSync(): void {
+        // Add the updateAllUIToTime method to the studio instance so graphs can call it
+        (studio as any).updateAllUIToTime = (time: number, source: 'video' | 'ui', sessionId: string) => {
+            this.updateAllUIToTime(time, source, sessionId);
+        };
     }
 
     importSession(): void {
@@ -222,7 +228,7 @@ class RacingDataStudio {
                     <div class="video-controls">
                         <input type="file" id="video-file-${session.id}" accept="video/*" style="display: none;">
                         <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video</button>
-                        <button class="sync-video-btn" onclick="syncVideo('${session.id}')" disabled>Sync with Lap</button>
+                        <button class="sync-video-btn" onclick="syncVideo('${session.id}')" disabled>Sync with Current Time</button>
                     </div>
                 </div>
                 <div class="video-content">
@@ -233,16 +239,6 @@ class RacingDataStudio {
                     <video id="video-${session.id}" class="video-player" controls style="display: none;">
                         Your browser does not support the video tag.
                     </video>
-                </div>
-                <div class="sync-controls" id="sync-controls-${session.id}" style="display: none;">
-                    <div class="sync-row">
-                        <label for="lap-select-${session.id}">Sync with lap:</label>
-                        <select id="lap-select-${session.id}">
-                            <!-- Options will be populated dynamically -->
-                        </select>
-                        <button class="confirm-sync-btn" onclick="confirmSync('${session.id}')">Confirm Sync</button>
-                        <button class="cancel-sync-btn" onclick="cancelSync('${session.id}')">Cancel</button>
-                    </div>
                 </div>
             </div>
         `;

@@ -85,72 +85,28 @@ export class VideoManager {
 
     syncVideo(sessionId: string): void {
         const video = this.videos.get(sessionId);
-        const syncControls = document.getElementById(`sync-controls-${sessionId}`);
-        const lapSelect = document.getElementById(`lap-select-${sessionId}`) as HTMLSelectElement;
-        
-        if (!video || !syncControls || !lapSelect) return;
+        if (!video) return;
+
+        // Get the current time for this session from studio
+        const currentTime = this.studio.currentTimes.get(sessionId);
+        if (currentTime === undefined) {
+            console.warn(`No current time available for session ${sessionId}`);
+            return;
+        }
 
         // Pause the video
         video.pause();
-        
-        // Populate lap options
-        this.populateLapOptions(sessionId, lapSelect);
-        
-        // Show sync controls
-        syncControls.style.display = 'block';
-    }
-
-    private populateLapOptions(sessionId: string, lapSelect: HTMLSelectElement): void {
-        const session = this.studio.sessions.get(sessionId);
-        if (!session) return;
-
-        // Clear existing options
-        lapSelect.innerHTML = '';
-        
-        // Add options for complete laps (excluding first and last incomplete laps)
-        const completeLaps = session.laps.slice(1, -1);
-        completeLaps.forEach((lap: LapData) => {
-            const option = document.createElement('option');
-            option.value = lap.lapIndex.toString();
-            option.textContent = `Lap ${lap.lapIndex} - ${this.formatTime(lap.lapTime)}`;
-            lapSelect.appendChild(option);
-        });
-    }
-
-    confirmSync(sessionId: string): void {
-        const video = this.videos.get(sessionId);
-        const lapSelect = document.getElementById(`lap-select-${sessionId}`) as HTMLSelectElement;
-        const syncControls = document.getElementById(`sync-controls-${sessionId}`);
-        
-        if (!video || !lapSelect || !syncControls) return;
-
-        const selectedLapIndex = parseInt(lapSelect.value);
-        const session = this.studio.sessions.get(sessionId);
-        if (!session) return;
-
-        const selectedLap = session.laps.find((lap: LapData) => lap.lapIndex === selectedLapIndex);
-        if (!selectedLap) return;
 
         // Calculate the sync offset for this specific session
-        // Video time at current frame should correspond to the start of the selected lap
-        const syncOffset = selectedLap.lapStartTime - video.currentTime;
+        // Video time at current frame should correspond to the current session time
+        const syncOffset = currentTime - video.currentTime;
         this.studio.videoSyncOffsets.set(sessionId, syncOffset);
         
         // Mark video as synced
         this.isVideoSynced.set(sessionId, true);
         
-        // Hide sync controls
-        syncControls.style.display = 'none';
-        
-        console.log(`Video synced for session ${sessionId}: Lap ${selectedLapIndex} start (${selectedLap.lapStartTime}s) = Video time ${video.currentTime}s`);
+        console.log(`Video synced for session ${sessionId}: Current time (${currentTime}s) = Video time ${video.currentTime}s`);
         console.log(`Sync offset: ${syncOffset}s`);
-    }
-
-    cancelSync(sessionId: string): void {
-        const syncControls = document.getElementById(`sync-controls-${sessionId}`);
-        if (syncControls) {
-            syncControls.style.display = 'none';
-        }
     }
 
     // Check if video is synced for a session
