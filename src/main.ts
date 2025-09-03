@@ -3,6 +3,7 @@ import { TelemetryCSVParser } from './csvParser.js';
 import { Studio } from './studio.js';
 import { GraphManager } from './graphManager.js';
 import { VideoManager } from './videoManager.js';
+import { MapManager } from './mapManager.js';
 import { getLapAtTimeForSession, getReferenceDatapointForSession } from './sessionUtils.js';
 
 const studio = new Studio();
@@ -19,11 +20,14 @@ class RacingDataStudio {
     private activeSessionId: string | null = null;
     private graphManager: GraphManager;
     private videoManager: VideoManager;
+    private mapManager: MapManager;
+    public currentLaps: Map<string, LapData> = new Map(); // sessionId -> current lap
 
     constructor() {
         this.parser = new TelemetryCSVParser();
         this.graphManager = new GraphManager(studio);
         this.videoManager = new VideoManager(studio);
+        this.mapManager = new MapManager(studio);
         this.setupGlobalFunctions();
         this.setupTimeSync();
         this.setupStudioTimeSync();
@@ -148,7 +152,10 @@ class RacingDataStudio {
         this.addDefaultGraph(sessionTab);
 
         // Auto-select the best lap (fastest lap time)
-        this.selectBestLap(sessionTab.session);
+        this.jumpToBestLapStart(sessionTab.session);
+
+        // Initialize map for this session
+        this.initializeMapForSession(sessionTab.id);
     }
 
     generateLapTable(session: Session): string {
@@ -250,6 +257,14 @@ class RacingDataStudio {
                             Your browser does not support the video tag.
                         </video>
                     </div>
+                    <div class="map-panel" id="map-panel-${session.id}">
+                        <div class="map-header">
+                            <h3>Track Map</h3>
+                        </div>
+                        <div class="map-container" id="map-container-${session.id}">
+                            <!-- Map will be initialized here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -333,15 +348,13 @@ class RacingDataStudio {
         // Update current time for this session in studio
         studio.currentTimes.set(sessionId, time);
 
-        // Only update UI elements if this is the currently active session
-        if (sessionId !== this.activeSessionId) {
-            // For non-active sessions, only update video time if needed
-            if (source !== 'video') {
-                this.videoManager.updateVideoTime(time, sessionId);
-            }
-            return;
-        }
+        // Update map current position
+        this.mapManager.updateCurrentPosition(sessionId, time);
 
+        if (source !== 'video') {
+            this.videoManager.updateVideoTime(time, sessionId);
+        }
+        
         // Find which lap this time corresponds to for the active session
         const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
         if (!session) return;
@@ -349,7 +362,9 @@ class RacingDataStudio {
         // Find the lap that contains this time
         const currentLap = getLapAtTimeForSession(session, time);
 
-        if (currentLap) {
+        if (currentLap && currentLap != this.currentLaps.get(sessionId)) {
+            this.currentLaps.set(sessionId, currentLap);
+
             // Update visual selection in the lap table
             this.updateLapSelectionVisual(sessionId, currentLap.lapIndex);
             
@@ -370,6 +385,8 @@ class RacingDataStudio {
     }
 
     updateLapSelectionVisual(sessionId: string, lapIndex: number): void {
+        console.log("Updating lap table selection to lapIndex:", lapIndex);
+
         // Update visual selection in table without triggering graph updates
         const sessionContent = document.getElementById(`content_${sessionId}`);
         if (sessionContent) {
@@ -504,37 +521,7 @@ class RacingDataStudio {
     }
 
     selectLap(sessionId: string, lapIndex: number): void {
-        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
-        if (!session) return;
-
-        // Find the lap directly by lapIndex
-        const lap = session.laps.find(l => l.lapIndex === lapIndex);
-        if (!lap) return;
-
-        // Update visual selection in table
-        const sessionContent = document.getElementById(`content_${sessionId}`);
-        if (sessionContent) {
-            // Remove previous selection
-            sessionContent.querySelectorAll('.lap-table tbody tr').forEach(row => {
-                row.classList.remove('selected');
-            });
-            
-            // Find the clicked row by matching the exact lapIndex in the onclick attribute
-            const rows = sessionContent.querySelectorAll('.lap-table tbody tr');
-            rows.forEach(row => {
-                const onclick = row.getAttribute('onclick');
-                // Use more precise matching to avoid substring issues (e.g., lap 1 vs lap 11)
-                if (onclick && onclick === `selectLap('${sessionId}', ${lapIndex})`) {
-                    row.classList.add('selected');
-                }
-            });
-        }
-
-        // Update graphs with selected lap
-        this.graphManager.setSelectedLap(lap);
-
-        // Update video and other UI to the start of this lap
-        this.updateAllUIToTime(lap.lapStartTime, 'ui', sessionId);
+        this.jumpToLapStart(sessionId, lapIndex);
     }
 
     addDefaultGraph(sessionTab: SessionTab): void {
@@ -554,9 +541,9 @@ class RacingDataStudio {
         }
     }
 
-    selectBestLap(session: Session): void {
+    jumpToBestLapStart(session: Session): void {
         if (session.bestLapIndex !== undefined) {
-            this.selectLap(session.id, session.bestLapIndex);
+            this.jumpToLapStart(session.id, session.bestLapIndex);
         }
     }
 
@@ -585,6 +572,9 @@ class RacingDataStudio {
         
         // Update all graphs to show/hide reference lap data
         this.graphManager.updateAllGraphsForReferenceChange();
+        
+        // Update all maps for reference lap change
+        this.mapManager.updateAllMapsForReferenceChange();
     }
 
     updateReferenceButtonStates(): void {
@@ -682,6 +672,11 @@ class RacingDataStudio {
         // Jump to the sector start time
         const sectorStartTime = targetLap.sectorStartTimes[sectorIndex];
         this.updateAllUIToTime(sectorStartTime, 'ui', sessionId);
+    }
+
+    initializeMapForSession(sessionId: string): void {
+        // Initialize the map for this session
+        this.mapManager.initializeMap(sessionId);
     }
 }
 

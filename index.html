@@ -424,6 +424,34 @@
             gap: 1rem;
         }
 
+        /* Map Panel Styles */
+        .map-panel {
+            flex-shrink: 0;
+            width: 400px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .map-header {
+            background: #e9ecef;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .map-header h4 {
+            margin: 0;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .map-container {
+            height: 400px;
+            width: 100%;
+        }
+
         .navigation-panel {
             flex-shrink: 0;
             min-width: fit-content;
@@ -562,6 +590,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
+    <script src="https://js.arcgis.com/4.28/"></script>
     <script type="module" src="dist/main.js"></script>
 </body>
 </html>
