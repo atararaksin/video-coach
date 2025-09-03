@@ -33,6 +33,7 @@ export interface Session {
     id: string;
     laps: LapData[];
     bestLapIndex: number;
+    bestTheoreticalLap: LapData;
     duration: number;
     date?: string;
     time?: string;

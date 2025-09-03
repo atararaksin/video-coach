@@ -1,5 +1,5 @@
 import { findClosestDatapoint } from "./gpsUtils.js";
-import { Datapoint, LapData } from "./types";
+import { Datapoint, LapData, Point, TimeToDistanceIndex } from "./types";
 
 export function reindexLap(lap: LapData, referenceLap: LapData) {
     // Rebuild datapoints sequence to be distance-matched with the reference map
@@ -66,4 +66,61 @@ export function getReferenceDatapointForLap(lap: LapData, time: number, referenc
     const timeBetweenDatapoints = lap.lapTime / lap.timeToDistanceIndex.length;
     const index = Math.min(lap.timeToDistanceIndex.length - 1, Math.round((time - lap.lapStartTime) / timeBetweenDatapoints));
     return referenceLap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
+}
+
+export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapData): LapData {
+    if (laps.length == 0) return null;
+
+    const sectorCount = laps[0].sectorTimes.length;
+    const bestTheoreticalDatapoints: Datapoint[] = [];
+    const bestTheoreticalTimeToDistanceIndex: TimeToDistanceIndex[] = [];
+    const bestTheoreticalSectorTimes: number[] = [];
+    const bestTheoreticalSectorStartTimes: number[] = [];
+
+    for (let sectorI = 0; sectorI < sectorCount; sectorI++) {
+        const bestSectorTime = laps.map(l => l.sectorTimes[sectorI]).reduce((a, b) => Math.min(a, b));
+        const bestSectorLap = laps.find(l => l.sectorTimes[sectorI] == bestSectorTime);
+        const bestSectorStartTime = bestSectorLap.sectorStartTimes[sectorI];
+
+        for (let dp of bestSectorLap.datapoints) {
+            if (dp.time < bestSectorStartTime) continue; // Not yet reached the sector
+            if (sectorI < sectorCount - 1 && dp.time >= bestSectorLap.sectorStartTimes[sectorI + 1]) break; // Passed the sector
+
+            const newDp = Object.assign({}, dp);
+            newDp.time = dp.time - bestSectorStartTime + bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
+            newDp.data.set("Time", newDp.time);
+
+            bestTheoreticalDatapoints.push(newDp);
+        }
+
+        bestTheoreticalSectorStartTimes.push(bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0));
+        bestTheoreticalSectorTimes.push(bestSectorTime);
+    }
+
+    const bestTheoreticalLapDuration = bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
+
+    bestTheoreticalDatapoints.sort((a, b) => a.time - b.time);
+
+    const timeStep = laps[0].datapoints[1].time - laps[0].datapoints[0].time;
+    for (let time = 0; time < bestTheoreticalLapDuration; time += timeStep) {
+        bestTheoreticalTimeToDistanceIndex.push({
+            time: time,
+            distanceBasedIndex: 0 // Will be filled later during lap reindexing
+        });
+    }
+
+    const bestTheoreticalLap: LapData = {
+        lapIndex: -1,
+        sessionId: laps[0].sessionId,
+        lapTime: bestTheoreticalLapDuration,
+        lapStartTime: bestTheoreticalSectorStartTimes[0],
+        datapoints: bestTheoreticalDatapoints,
+        timeToDistanceIndex: bestTheoreticalTimeToDistanceIndex,
+        sectorTimes: bestTheoreticalSectorTimes,
+        sectorStartTimes: bestTheoreticalSectorStartTimes
+    };
+
+    reindexLap(bestTheoreticalLap, referenceLap);
+
+    return bestTheoreticalLap;
 }

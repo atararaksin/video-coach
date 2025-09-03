@@ -30,6 +30,7 @@ export class TelemetryCSVParser {
             id: id,
             laps: laps,
             bestLapIndex: bestLap.lapIndex,
+            bestTheoreticalLap: null, // Will be calculated later
             duration: parseFloat(headerInfo.duration),
             date: headerInfo.date,
             time: headerInfo.time,

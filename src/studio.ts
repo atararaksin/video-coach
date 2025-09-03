@@ -1,4 +1,4 @@
-import { reindexLap } from "./lapUtils.js";
+import { calculateBestTheoreticalLap, reindexLap } from "./lapUtils.js";
 import { calculateSectorTimes, splitIntoSectors } from "./sectorUtils.js";
 import { Session, Track, LapData } from "./types";
 
@@ -39,6 +39,10 @@ export class Studio {
             const lap = session.laps[i];
             reindexLap(lap, this.track.referenceLap);
         }
+
+        // Calculate best theoretical lap
+        session.bestTheoreticalLap = calculateBestTheoreticalLap(session.laps.slice(1, -1), this.track.referenceLap);
+        console.log("Best theoretical lap", session.bestTheoreticalLap);
     }
 
     removeSession(sessionId: string) {
