@@ -5,6 +5,7 @@ import { GraphManager } from './graphManager.js';
 import { VideoManager } from './videoManager.js';
 import { MapManager } from './mapManager.js';
 import { getLapAtTimeForSession, getReferenceDatapointForSession } from './sessionUtils.js';
+import { getDatapointForLap, getReferenceDatapointForLap } from './lapUtils.js';
 
 const studio = new Studio();
 
@@ -234,6 +235,15 @@ class RacingDataStudio {
                 <div class="video-header">
                     <h3>Video</h3>
                     <div class="video-controls">
+                        <div class="time-delta-bar" id="time-delta-bar-${session.id}">
+                            <div class="delta-container">
+                                <div class="delta-bar-background">
+                                    <div class="delta-bar-fill" id="delta-bar-fill-${session.id}"></div>
+                                    <div class="delta-center-line"></div>
+                                </div>
+                                <div class="delta-text" id="delta-text-${session.id}">--</div>
+                            </div>
+                        </div>
                         <div class="reference-lap-selector">
                             <label for="reference-select-${session.id}">Reference Lap:</label>
                             <select id="reference-select-${session.id}" class="reference-select" onchange="selectReferenceFromDropdown('${session.id}', this.value)">
@@ -382,7 +392,78 @@ class RacingDataStudio {
         if (source !== 'video') {
             this.videoManager.updateVideoTime(time, sessionId);
         }
+
+        // Update time delta bar
+        this.updateTimeDeltaBar(sessionId, time);
     }
+
+    updateTimeDeltaBar(sessionId: string, time: number): void {
+        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
+        if (!session) return;
+
+        const deltaBarFill = document.getElementById(`delta-bar-fill-${sessionId}`);
+        const deltaText = document.getElementById(`delta-text-${sessionId}`);
+        
+        if (!deltaBarFill || !deltaText) return;
+
+        // Get reference lap from studio
+        const referenceLap = studio.getReferenceLap(sessionId);
+        
+        if (!referenceLap) {
+            // No reference lap selected, show placeholder
+            //deltaText.textContent = '--';
+            deltaBarFill.style.width = '0%';
+            deltaBarFill.style.left = '50%';
+            deltaBarFill.style.backgroundColor = '#ccc';
+            return;
+        }
+
+        try {
+            // Get current lap
+            const currentLap = getLapAtTimeForSession(session, time);
+            if (!currentLap) return;
+
+            // Get current lap datapoint using getDatapointForLap()
+            const currentLapDatapoint = getDatapointForLap(currentLap, time);
+            if (!currentLapDatapoint) return;
+
+            // Get reference lap datapoint using getReferenceDatapointForLap()
+            const referenceLapDatapoint = getReferenceDatapointForLap(currentLap, time, referenceLap);
+            if (!referenceLapDatapoint) return;
+
+            // Compute diff as specified: currentLapDatapoint.time - currentLap.startTime - referenceLapDatapoint.time + referenceLap.startTime
+            const diff = currentLapDatapoint.time - currentLap.lapStartTime - referenceLapDatapoint.time + referenceLap.lapStartTime;
+
+            // Update delta text
+            //const sign = diff >= 0 ? '+' : '';
+            //deltaText.textContent = `${sign}${diff.toFixed(3)}s`;
+
+            // Update delta bar visualization
+            const maxDelta = 1.0; // Maximum delta to show (1 seconds)
+            const normalizedDelta = Math.max(-1, Math.min(1, diff / maxDelta)); // Clamp between -1 and 1
+            
+            if (diff < 0) {
+                // Faster than reference (negative delta) - green, to the right
+                deltaBarFill.style.backgroundColor = '#4CAF50';
+                deltaBarFill.style.left = `${50 + (normalizedDelta * 50)}%`; // normalizedDelta is negative, so this moves left from center
+                deltaBarFill.style.width = `${Math.abs(normalizedDelta) * 50}%`;
+                deltaText.style.color = '#4CAF50';
+            } else {
+                // Slower than reference (positive delta) - red, to the left
+                deltaBarFill.style.backgroundColor = '#F44336';
+                deltaBarFill.style.left = '50%';
+                deltaBarFill.style.width = `${normalizedDelta * 50}%`;
+                deltaText.style.color = '#F44336';
+            }
+        } catch (error) {
+            console.error('Error calculating time delta:', error);
+            //deltaText.textContent = '--';
+            deltaBarFill.style.width = '0%';
+            deltaBarFill.style.left = '50%';
+            deltaBarFill.style.backgroundColor = '#ccc';
+        }
+    }
+
 
     updateLapSelectionVisual(sessionId: string, lapIndex: number): void {
         console.log("Updating lap table selection to lapIndex:", lapIndex);

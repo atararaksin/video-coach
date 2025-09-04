@@ -1,4 +1,4 @@
-import { findClosestDatapoint } from "./gpsUtils.js";
+import { calculateDistance, findClosestDatapoint } from "./gpsUtils.js";
 import { Datapoint, LapData, TimeToDistanceIndex } from "./types";
 
 export function reindexLap(lap: LapData, referenceLap: LapData) {
@@ -68,6 +68,71 @@ export function getReferenceDatapointForLap(lap: LapData, time: number, referenc
     return referenceLap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
 }
 
+/*// For a given base lap at a given point in time, gives a datapoint from the reference lap
+// that is distance-matched to the base lap's datapoint
+export function getReferenceDatapointForLapWithInterpolation(lap: LapData, time: number, referenceLap: LapData): Datapoint {
+    const timeBetweenDatapoints = lap.lapTime / lap.timeToDistanceIndex.length;
+    const index = (time - lap.lapStartTime) / timeBetweenDatapoints;
+    const indexFloor = Math.floor(index);
+    if (indexFloor == lap.timeToDistanceIndex.length - 1) {
+        // No next datapoint to interpolate with
+        return referenceLap.datapoints[lap.timeToDistanceIndex[indexFloor].distanceBasedIndex];
+    } else if (indexFloor == index) {
+        return referenceLap.datapoints[lap.timeToDistanceIndex[indexFloor].distanceBasedIndex];
+    } else {
+        const ratio = (indexFloor + 1 - index) / (index - indexFloor); // close to 0 when close to dp1
+        const dp1 = referenceLap.datapoints[lap.timeToDistanceIndex[indexFloor].distanceBasedIndex];
+        const dp2 = referenceLap.datapoints[lap.timeToDistanceIndex[indexFloor + 1].distanceBasedIndex];
+
+        const interpolatedDp = Object.assign({}, dp1);
+ 
+        interpolatedDp.time = (dp1.time + ratio * dp2.time) / (1 + ratio);
+        interpolatedDp.speed = (dp1.speed + ratio * dp2.speed) / (1 + ratio);
+        interpolatedDp.lat = (dp1.lat + ratio * dp2.lat) / (1 + ratio);
+        interpolatedDp.lon = (dp1.lon + ratio * dp2.lon) / (1 + ratio);
+        interpolatedDp.data = new Map();
+        for (let channel of dp1.data.keys()) {
+            interpolatedDp.data.set(channel, (dp1.data.get(channel) + ratio * dp2.data.get(channel)) / (1 + ratio));
+        }
+        console.log("Interpolated", dp1, dp2, interpolatedDp);
+        return interpolatedDp; 
+    }
+}
+
+// For a given base lap at a given point in time, gives a datapoint from the reference lap
+// that is distance-matched to the base lap's datapoint, with interpolation
+export function getInterpolatedReferenceDatapointForLap(lap: LapData, datapoint: Datapoint, referenceLap: LapData): Datapoint {
+    const timeBetweenDatapoints = lap.lapTime / lap.timeToDistanceIndex.length;
+    const index = Math.min(lap.timeToDistanceIndex.length - 1, Math.round((datapoint.time - lap.lapStartTime) / timeBetweenDatapoints));
+    const referenceLapIndex = lap.timeToDistanceIndex[index].distanceBasedIndex;
+
+    if (referenceLapIndex == 0 || referenceLapIndex == referenceLap.datapoints.length - 1) {   
+        return referenceLap.datapoints[referenceLapIndex];
+    }
+
+    // Interpolation
+    const candidateDatapoints: Datapoint[] = [];
+    for (let i = referenceLapIndex - 1; i < referenceLapIndex + 1; i++) {
+        candidateDatapoints.push(referenceLap.datapoints[i]);
+    }
+    candidateDatapoints.sort((a, b) => Math.abs(calculateDistance(a.lat, a.lon, datapoint.lat, datapoint.lon)) -  Math.abs(calculateDistance(b.lat, b.lon, datapoint.lat, datapoint.lon)));
+    const dp1 = candidateDatapoints[0];
+    const dp2 = candidateDatapoints[1];
+
+    const interpolatedDp = Object.assign({}, dp1);
+    const distanceRatio = Math.abs(calculateDistance(dp2.lat, dp2.lon, datapoint.lat, datapoint.lon)) / Math.abs(calculateDistance(dp1.lat, dp1.lon, datapoint.lat, datapoint.lon));
+    
+    interpolatedDp.time = (dp2.time + distanceRatio * dp1.time) / (1 + distanceRatio);
+    interpolatedDp.speed = (dp2.speed + distanceRatio * dp1.speed) / (1 + distanceRatio);
+    interpolatedDp.lat = (dp2.lat + distanceRatio * dp1.lat) / (1 + distanceRatio);
+    interpolatedDp.lon = (dp2.lon + distanceRatio * dp1.lon) / (1 + distanceRatio);
+    interpolatedDp.data = new Map();
+    for (let channel of dp1.data.keys()) {
+        interpolatedDp.data.set(channel, (dp2.data.get(channel) + distanceRatio * dp1.data.get(channel)) / (1 + distanceRatio));
+    } 
+    return interpolatedDp;  
+}*/
+
 export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapData): LapData {
     if (laps.length == 0) return null;
 
@@ -113,7 +178,7 @@ export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapDa
         lapIndex: -1,
         sessionId: laps[0].sessionId,
         lapTime: bestTheoreticalLapDuration,
-        lapStartTime: bestTheoreticalSectorStartTimes[0],
+        lapStartTime: 0,
         datapoints: bestTheoreticalDatapoints,
         timeToDistanceIndex: bestTheoreticalTimeToDistanceIndex,
         sectorTimes: bestTheoreticalSectorTimes,

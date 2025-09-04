@@ -606,6 +606,62 @@
             color: #9c27b0;
         }
 
+        /* Time Delta Bar Styles */
+        .time-delta-bar {
+            display: flex;
+            align-items: center;
+            margin-right: 1rem;
+            min-width: 200px;
+        }
+
+        .delta-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+            width: 100%;
+        }
+
+        .delta-bar-background {
+            position: relative;
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .delta-bar-fill {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: #ccc;
+            transition: all 0.2s ease;
+            border-radius: 9px;
+        }
+
+        .delta-center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #666;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .delta-text {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #333;
+            min-width: 60px;
+            text-align: center;
+            transition: color 0.2s ease;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .video-content-wrapper {
