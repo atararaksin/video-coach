@@ -550,6 +550,62 @@
             min-width: 0;
         }
 
+        /* Reference Lap Selector Styles */
+        .reference-lap-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-right: 1rem;
+        }
+
+        .reference-lap-selector label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        .reference-select {
+            background: #f8f9fa;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+            min-width: 200px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .reference-select:hover {
+            background: #e9ecef;
+            border-color: #999;
+        }
+
+        .reference-select:focus {
+            outline: none;
+            background: #fff;
+            border-color: #2196f3;
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+        }
+
+        .reference-select optgroup {
+            font-weight: 600;
+            color: #495057;
+            background: #f8f9fa;
+            font-style: normal;
+        }
+
+        .reference-select option {
+            padding: 0.25rem 0.5rem;
+            color: #333;
+            background: white;
+        }
+
+        .reference-select option[value*="theoretical"] {
+            font-style: italic;
+            color: #9c27b0;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .video-content-wrapper {

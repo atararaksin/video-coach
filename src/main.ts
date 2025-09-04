@@ -31,6 +31,7 @@ class RacingDataStudio {
         this.setupGlobalFunctions();
         this.setupTimeSync();
         this.setupStudioTimeSync();
+        this.setupDropdownClickOutside();
     }
 
     setupGlobalFunctions(): void {
@@ -53,6 +54,9 @@ class RacingDataStudio {
         (window as any).jumpToLap = (sessionId: string, lapIndex: number) => this.jumpToLap(sessionId, lapIndex);
         (window as any).jumpToLapStart = (sessionId: string, lapIndex: number) => this.jumpToLapStart(sessionId, lapIndex);
         (window as any).jumpToSector = (sessionId: string, lapIndex: number, sectorIndex: number) => this.jumpToSector(sessionId, lapIndex, sectorIndex);
+        
+        // Reference lap dropdown functions
+        (window as any).selectReferenceFromDropdown = (currentSessionId: string, value: string) => this.selectReferenceFromDropdown(currentSessionId, value);
     }
 
     setupTimeSync(): void {
@@ -191,24 +195,12 @@ class RacingDataStudio {
                   ).join('')
                 : Array.from({length: sectorCount}, () => '<td class="sector-time">-</td>').join('');
 
-            const referenceLap = studio.getReferenceLap();
-            const isReferenceLap = referenceLap && 
-                referenceLap.sessionId === lap.sessionId && 
-                referenceLap.lapIndex === lap.lapIndex;
-            
-            const referenceIcon = isReferenceLap ? '★' : '☆';
-            const referenceTitle = isReferenceLap ? 'Remove as reference lap' : 'Set as reference lap';
-            const rowClass = isReferenceLap ? 'reference-lap' : '';
-
             return `
-                <tr class="${rowClass}" onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
+                <tr onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
                     <td>${lap.lapIndex}</td>
                     <td class="lap-time">${this.formatTime(lap.lapTime)}</td>
                     ${sectorCells}
                     <td>${maxSpeed.toFixed(1)} km/h</td>
-                    <td>
-                        <button class="reference-btn-icon" title="${referenceTitle}" onclick="event.stopPropagation(); toggleReferenceLap('${session.id}', ${lap.lapIndex})">${referenceIcon}</button>
-                    </td>
                 </tr>
             `;
         }).join('');
@@ -221,7 +213,6 @@ class RacingDataStudio {
                         <th>Lap Time</th>
                         ${sectorHeaders}
                         <th>Top Speed</th>
-                        <th>Ref</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -241,6 +232,13 @@ class RacingDataStudio {
                 <div class="video-header">
                     <h3>Video</h3>
                     <div class="video-controls">
+                        <div class="reference-lap-selector">
+                            <label for="reference-select-${session.id}">Reference Lap:</label>
+                            <select id="reference-select-${session.id}" class="reference-select" onchange="selectReferenceFromDropdown('${session.id}', this.value)">
+                                <option value="">Select Reference Lap</option>
+                                ${this.generateReferenceOptions()}
+                            </select>
+                        </div>
                         <input type="file" id="video-file-${session.id}" accept="video/*" style="display: none;">
                         <button class="load-video-btn" onclick="loadVideo('${session.id}')">Load Video</button>
                         <button class="sync-video-btn" onclick="syncVideo('${session.id}')" disabled>Sync with Current Time</button>
@@ -677,6 +675,241 @@ class RacingDataStudio {
     initializeMapForSession(sessionId: string): void {
         // Initialize the map for this session
         this.mapManager.initializeMap(sessionId);
+    }
+
+    toggleReferenceDropdown(sessionId: string): void {
+        const dropdown = document.getElementById(`reference-dropdown-menu-${sessionId}`);
+        if (!dropdown) return;
+
+        const isVisible = dropdown.style.display === 'block';
+        
+        // Close all other dropdowns first
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            (menu as HTMLElement).style.display = 'none';
+        });
+
+        if (!isVisible) {
+            // Populate and show this dropdown
+            this.populateReferenceDropdown(sessionId);
+            dropdown.style.display = 'block';
+        }
+    }
+
+    populateReferenceDropdown(sessionId: string): void {
+        const dropdown = document.getElementById(`reference-dropdown-menu-${sessionId}`);
+        if (!dropdown) return;
+
+        let html = '';
+        
+        // Add all sessions
+        this.sessionTabs.forEach(sessionTab => {
+            const session = sessionTab.session;
+            const completeLaps = session.laps.slice(1, -1); // Filter out incomplete laps
+            
+            if (completeLaps.length === 0) return; // Skip sessions with no complete laps
+
+            html += `
+                <div class="dropdown-item session-item" onclick="selectReferenceSession('${session.id}', '${sessionId}')">
+                    <span>${sessionTab.filename}</span>
+                    <span class="dropdown-arrow">▶</span>
+                    <div class="dropdown-submenu">
+            `;
+
+            // Add complete laps
+            completeLaps.forEach(lap => {
+                html += `
+                    <div class="dropdown-item lap-item" onclick="selectReferenceLap('${session.id}', ${lap.lapIndex}, '${sessionId}')">
+                        Lap ${lap.lapIndex} - ${this.formatTime(lap.lapTime)}
+                    </div>
+                `;
+            });
+
+            // Add best theoretical lap if available
+            if (session.bestTheoreticalLap) {
+                html += `
+                    <div class="dropdown-item lap-item theoretical-lap" onclick="selectBestTheoreticalLap('${session.id}', '${sessionId}')">
+                        Best Theoretical - ${this.formatTime(session.bestTheoreticalLap.lapTime)}
+                    </div>
+                `;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        dropdown.innerHTML = html;
+    }
+
+    selectReferenceSession(targetSessionId: string, currentSessionId: string): void {
+        // This function is called when hovering over a session item
+        // The submenu display is handled by CSS :hover
+    }
+
+    selectReferenceLap(sessionId: string, lapIndex: number, currentSessionId: string): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        // Find the lap
+        const lap = session.laps.find(l => l.lapIndex === lapIndex);
+        if (!lap) return;
+
+        // Set this lap as the reference lap
+        studio.setReferenceLap(lap);
+
+        // Update dropdown text
+        const sessionTab = this.sessionTabs.find(tab => tab.id === sessionId);
+        const dropdownText = document.getElementById(`reference-dropdown-text-${currentSessionId}`);
+        if (dropdownText && sessionTab) {
+            dropdownText.textContent = `${sessionTab.filename} - Lap ${lapIndex}`;
+        }
+
+        // Close dropdown
+        const dropdown = document.getElementById(`reference-dropdown-menu-${currentSessionId}`);
+        if (dropdown) {
+            dropdown.style.display = 'none';
+        }
+
+        // Update all graphs and maps for reference change
+        this.graphManager.updateAllGraphsForReferenceChange();
+        this.mapManager.updateAllMapsForReferenceChange();
+    }
+
+    selectBestTheoreticalLap(sessionId: string, currentSessionId: string): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session || !session.bestTheoreticalLap) return;
+
+        // Set the best theoretical lap as the reference lap
+        studio.setReferenceLap(session.bestTheoreticalLap);
+
+        // Update dropdown text
+        const sessionTab = this.sessionTabs.find(tab => tab.id === sessionId);
+        const dropdownText = document.getElementById(`reference-dropdown-text-${currentSessionId}`);
+        if (dropdownText && sessionTab) {
+            dropdownText.textContent = `${sessionTab.filename} - Best Theoretical`;
+        }
+
+        // Close dropdown
+        const dropdown = document.getElementById(`reference-dropdown-menu-${currentSessionId}`);
+        if (dropdown) {
+            dropdown.style.display = 'none';
+        }
+
+        // Update all graphs and maps for reference change
+        this.graphManager.updateAllGraphsForReferenceChange();
+        this.mapManager.updateAllMapsForReferenceChange();
+    }
+
+    generateReferenceOptions(): string {
+        let options = '';
+        
+        // Add all sessions with their laps
+        this.sessionTabs.forEach(sessionTab => {
+            const session = sessionTab.session;
+            const completeLaps = session.laps.slice(1, -1); // Filter out incomplete laps
+            
+            if (completeLaps.length === 0) return; // Skip sessions with no complete laps
+
+            // Create optgroup for this session
+            options += `<optgroup label="${sessionTab.filename}">`;
+
+            // Add complete laps
+            completeLaps.forEach(lap => {
+                const value = `${session.id}:lap:${lap.lapIndex}`;
+                options += `<option value="${value}">Lap ${lap.lapIndex} - ${this.formatTime(lap.lapTime)}</option>`;
+            });
+
+            // Add best theoretical lap if available
+            if (session.bestTheoreticalLap) {
+                const value = `${session.id}:theoretical`;
+                options += `<option value="${value}">Best Theoretical - ${this.formatTime(session.bestTheoreticalLap.lapTime)}</option>`;
+            }
+
+            options += `</optgroup>`;
+        });
+
+        return options;
+    }
+
+    selectReferenceFromDropdown(currentSessionId: string, value: string): void {
+        if (!value) {
+            // Clear reference lap
+            studio.setReferenceLap(null);
+            this.updateAllReferenceSelects();
+            this.graphManager.updateAllGraphsForReferenceChange();
+            this.mapManager.updateAllMapsForReferenceChange();
+            return;
+        }
+
+        const parts = value.split(':');
+        if (parts.length < 2) return;
+
+        const sessionId = parts[0];
+        const type = parts[1];
+
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        if (type === 'theoretical' && session.bestTheoreticalLap) {
+            // Set best theoretical lap as reference
+            studio.setReferenceLap(session.bestTheoreticalLap);
+        } else if (type === 'lap' && parts.length === 3) {
+            const lapIndex = parseInt(parts[2]);
+            const lap = session.laps.find(l => l.lapIndex === lapIndex);
+            if (lap) {
+                studio.setReferenceLap(lap);
+            }
+        }
+
+        // Update all reference selects to show the same selection
+        this.updateAllReferenceSelects();
+        
+        // Update all graphs and maps for reference change
+        this.graphManager.updateAllGraphsForReferenceChange();
+        this.mapManager.updateAllMapsForReferenceChange();
+    }
+
+    updateAllReferenceSelects(): void {
+        const referenceLap = studio.getReferenceLap();
+        let selectedValue = '';
+
+        if (referenceLap) {
+            if (referenceLap === studio.sessions.get(referenceLap.sessionId)?.bestTheoreticalLap) {
+                selectedValue = `${referenceLap.sessionId}:theoretical`;
+            } else {
+                selectedValue = `${referenceLap.sessionId}:lap:${referenceLap.lapIndex}`;
+            }
+        }
+
+        // Update all reference select elements
+        this.sessionTabs.forEach(sessionTab => {
+            const select = document.getElementById(`reference-select-${sessionTab.id}`) as HTMLSelectElement;
+            if (select) {
+                // Regenerate options to include any new sessions
+                const defaultOption = select.querySelector('option[value=""]');
+                select.innerHTML = '';
+                if (defaultOption) {
+                    select.appendChild(defaultOption);
+                }
+                select.innerHTML = `<option value="">Select Reference Lap</option>${this.generateReferenceOptions()}`;
+                select.value = selectedValue;
+            }
+        });
+    }
+
+    setupDropdownClickOutside(): void {
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (event) => {
+            const target = event.target as HTMLElement;
+            
+            // Check if the click is outside any dropdown
+            if (!target.closest('.dropdown-container')) {
+                document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                    (menu as HTMLElement).style.display = 'none';
+                });
+            }
+        });
     }
 }
 

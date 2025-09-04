@@ -1,5 +1,5 @@
 import { findClosestDatapoint } from "./gpsUtils.js";
-import { Datapoint, LapData, Point, TimeToDistanceIndex } from "./types";
+import { Datapoint, LapData, TimeToDistanceIndex } from "./types";
 
 export function reindexLap(lap: LapData, referenceLap: LapData) {
     // Rebuild datapoints sequence to be distance-matched with the reference map
@@ -80,11 +80,11 @@ export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapDa
     for (let sectorI = 0; sectorI < sectorCount; sectorI++) {
         const bestSectorTime = laps.map(l => l.sectorTimes[sectorI]).reduce((a, b) => Math.min(a, b));
         const bestSectorLap = laps.find(l => l.sectorTimes[sectorI] == bestSectorTime);
-        const bestSectorStartTime = bestSectorLap.sectorStartTimes[sectorI];
+        const bestSectorStartTime = sectorI == 0 ? bestSectorLap.lapStartTime : bestSectorLap.sectorStartTimes[sectorI - 1];
 
         for (let dp of bestSectorLap.datapoints) {
             if (dp.time < bestSectorStartTime) continue; // Not yet reached the sector
-            if (sectorI < sectorCount - 1 && dp.time >= bestSectorLap.sectorStartTimes[sectorI + 1]) break; // Passed the sector
+            if (sectorI < sectorCount - 1 && dp.time >= bestSectorLap.sectorStartTimes[sectorI]) break; // Passed the sector
 
             const newDp = Object.assign({}, dp);
             newDp.time = dp.time - bestSectorStartTime + bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
@@ -93,8 +93,8 @@ export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapDa
             bestTheoreticalDatapoints.push(newDp);
         }
 
-        bestTheoreticalSectorStartTimes.push(bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0));
         bestTheoreticalSectorTimes.push(bestSectorTime);
+        bestTheoreticalSectorStartTimes.push(bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0));
     }
 
     const bestTheoreticalLapDuration = bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
