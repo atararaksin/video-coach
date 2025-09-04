@@ -367,16 +367,16 @@ class RacingDataStudio {
 
             // Update visual selection in the lap table
             this.updateLapSelectionVisual(sessionId, currentLap.lapIndex);
-            
-            // Update graph manager's selected lap if it's different
-            if (!this.graphManager.getSelectedLap(sessionId) || 
-                this.graphManager.getSelectedLap(sessionId)?.lapIndex !== currentLap.lapIndex) {
-                this.graphManager.setSelectedLap(currentLap);
-            }
-            
-            // Update graph position indicators
-            this.graphManager.updateCurrentTimePosition(time, sessionId);
         }
+
+        // Update graph manager's selected lap if it's different
+        if (!this.graphManager.getSelectedLap(sessionId) || 
+            this.graphManager.getSelectedLap(sessionId)?.lapIndex !== currentLap.lapIndex) {
+            this.graphManager.setSelectedLap(currentLap);
+        }
+        
+        // Update graph position indicators
+        this.graphManager.updateCurrentTimePosition(time, sessionId);
 
         // Update video time if the source is not video (to avoid feedback loop)
         if (source !== 'video') {
