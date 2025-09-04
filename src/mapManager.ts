@@ -215,7 +215,7 @@ export class MapManager {
     }
 
     updateReferenceLap(sessionId: string): void {
-        const referenceLap = this.studio.getReferenceLap();
+        const referenceLap = this.studio.getReferenceLap(sessionId);
         if (referenceLap) {
             this.updateLapPath(sessionId, referenceLap, [255, 152, 0], true); // Orange for reference lap
         } else {

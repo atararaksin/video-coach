@@ -5,7 +5,7 @@ import { Session, Track, LapData } from "./types";
 export class Studio {
     public track: Track;
     public readonly sessions: Map<string, Session> = new Map();
-    public referenceLap: LapData | null = null;
+    public referenceLaps: Map<string, LapData | null> = new Map(); // sessionId -> reference lap
     public videoSyncOffsets: Map<string, number> = new Map(); // sessionId -> video time offset
     public currentTimes: Map<string, number> = new Map(); // sessionId -> current playback time
 
@@ -47,19 +47,24 @@ export class Studio {
 
     removeSession(sessionId: string) {
         this.sessions.delete(sessionId);
-        if (this.referenceLap && this.referenceLap.sessionId === sessionId) {
-            this.referenceLap = null;
+
+        this.referenceLaps.delete(sessionId);
+
+        for (let otherSessionId of this.referenceLaps.keys()) {
+            if (this.referenceLaps.get(otherSessionId).sessionId === sessionId) {
+                this.referenceLaps.delete(otherSessionId);
+            }
         }
-        // Clean up session-specific video sync data
+        
         this.videoSyncOffsets.delete(sessionId);
         this.currentTimes.delete(sessionId);
     }
 
-    setReferenceLap(lap: LapData | null) {
-        this.referenceLap = lap;
+    setReferenceLap(lap: LapData, sessionId: string) {
+        this.referenceLaps.set(sessionId, lap);
     }
 
-    getReferenceLap(): LapData | null {
-        return this.referenceLap;
+    getReferenceLap(sessionId: string): LapData | null {
+        return this.referenceLaps.get(sessionId);
     }
 }

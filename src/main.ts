@@ -44,7 +44,6 @@ class RacingDataStudio {
         (window as any).removeGraph = (graphId: string) => this.removeGraph(graphId);
         (window as any).updateGraph = (graphId: string) => this.updateGraph(graphId);
         (window as any).selectLap = (sessionId: string, lapIndex: number) => this.selectLap(sessionId, lapIndex);
-        (window as any).toggleReferenceLap = (sessionId: string, lapIndex: number) => this.toggleReferenceLap(sessionId, lapIndex);
         
         // Video-related functions
         (window as any).loadVideo = (sessionId: string) => this.videoManager.loadVideo(sessionId);
@@ -109,6 +108,9 @@ class RacingDataStudio {
             this.createTab(sessionTab);
             this.createSessionContent(sessionTab);
             this.switchToTab(sessionTab.id);
+            
+            // Refresh reference lap dropdowns in all other sessions
+            this.refreshAllReferenceDropdowns();
             
         } catch (error) {
             console.error('Error parsing CSV:', error);
@@ -499,6 +501,9 @@ class RacingDataStudio {
         // Clean up video resources
         this.videoManager.removeVideo(sessionId);
         
+        // Refresh reference lap dropdowns in all remaining sessions
+        this.refreshAllReferenceDropdowns();
+        
         // Update all graphs in case the reference lap was removed
         this.graphManager.updateAllGraphsForReferenceChange();
     }
@@ -543,79 +548,6 @@ class RacingDataStudio {
         if (session.bestLapIndex !== undefined) {
             this.jumpToLapStart(session.id, session.bestLapIndex);
         }
-    }
-
-    toggleReferenceLap(sessionId: string, lapIndex: number): void {
-        const session = this.sessionTabs.find(tab => tab.id === sessionId)?.session;
-        if (!session) return;
-
-        // Find the lap
-        const lap = session.laps.find(l => l.lapIndex === lapIndex);
-        if (!lap) return;
-
-        const currentReferenceLap = studio.getReferenceLap();
-        
-        // If this lap is already the reference lap, remove it
-        if (currentReferenceLap && 
-            currentReferenceLap.sessionId === lap.sessionId && 
-            currentReferenceLap.lapIndex === lap.lapIndex) {
-            studio.setReferenceLap(null);
-        } else {
-            // Set this lap as the new reference lap
-            studio.setReferenceLap(lap);
-        }
-
-        // Update only the reference button states across all tables
-        this.updateReferenceButtonStates();
-        
-        // Update all graphs to show/hide reference lap data
-        this.graphManager.updateAllGraphsForReferenceChange();
-        
-        // Update all maps for reference lap change
-        this.mapManager.updateAllMapsForReferenceChange();
-    }
-
-    updateReferenceButtonStates(): void {
-        const referenceLap = studio.getReferenceLap();
-        
-        // Update all reference buttons across all session tables
-        this.sessionTabs.forEach(sessionTab => {
-            const sessionContent = document.getElementById(`content_${sessionTab.id}`);
-            if (!sessionContent) return;
-
-            const referenceButtons = sessionContent.querySelectorAll('.reference-btn-icon');
-            referenceButtons.forEach(button => {
-                const buttonElement = button as HTMLButtonElement;
-                const onclick = buttonElement.getAttribute('onclick');
-                
-                if (onclick) {
-                    // Extract sessionId and lapIndex from onclick attribute
-                    const match = onclick.match(/toggleReferenceLap\('([^']+)', (\d+)\)/);
-                    if (match) {
-                        const buttonSessionId = match[1];
-                        const buttonLapIndex = parseInt(match[2]);
-                        
-                        const isReferenceLap = referenceLap && 
-                            referenceLap.sessionId === buttonSessionId && 
-                            referenceLap.lapIndex === buttonLapIndex;
-                        
-                        // Update button appearance
-                        buttonElement.textContent = isReferenceLap ? '★' : '☆';
-                        buttonElement.title = isReferenceLap ? 'Remove as reference lap' : 'Set as reference lap';
-                        
-                        // Update row class
-                        const row = buttonElement.closest('tr');
-                        if (row) {
-                            if (isReferenceLap) {
-                                row.classList.add('reference-lap');
-                            } else {
-                                row.classList.remove('reference-lap');
-                            }
-                        }
-                    }
-                }
-            });
-        });
     }
 
     jumpToLap(sessionId: string, lapIndex: number): void {
@@ -677,130 +609,6 @@ class RacingDataStudio {
         this.mapManager.initializeMap(sessionId);
     }
 
-    toggleReferenceDropdown(sessionId: string): void {
-        const dropdown = document.getElementById(`reference-dropdown-menu-${sessionId}`);
-        if (!dropdown) return;
-
-        const isVisible = dropdown.style.display === 'block';
-        
-        // Close all other dropdowns first
-        document.querySelectorAll('.dropdown-menu').forEach(menu => {
-            (menu as HTMLElement).style.display = 'none';
-        });
-
-        if (!isVisible) {
-            // Populate and show this dropdown
-            this.populateReferenceDropdown(sessionId);
-            dropdown.style.display = 'block';
-        }
-    }
-
-    populateReferenceDropdown(sessionId: string): void {
-        const dropdown = document.getElementById(`reference-dropdown-menu-${sessionId}`);
-        if (!dropdown) return;
-
-        let html = '';
-        
-        // Add all sessions
-        this.sessionTabs.forEach(sessionTab => {
-            const session = sessionTab.session;
-            const completeLaps = session.laps.slice(1, -1); // Filter out incomplete laps
-            
-            if (completeLaps.length === 0) return; // Skip sessions with no complete laps
-
-            html += `
-                <div class="dropdown-item session-item" onclick="selectReferenceSession('${session.id}', '${sessionId}')">
-                    <span>${sessionTab.filename}</span>
-                    <span class="dropdown-arrow">▶</span>
-                    <div class="dropdown-submenu">
-            `;
-
-            // Add complete laps
-            completeLaps.forEach(lap => {
-                html += `
-                    <div class="dropdown-item lap-item" onclick="selectReferenceLap('${session.id}', ${lap.lapIndex}, '${sessionId}')">
-                        Lap ${lap.lapIndex} - ${this.formatTime(lap.lapTime)}
-                    </div>
-                `;
-            });
-
-            // Add best theoretical lap if available
-            if (session.bestTheoreticalLap) {
-                html += `
-                    <div class="dropdown-item lap-item theoretical-lap" onclick="selectBestTheoreticalLap('${session.id}', '${sessionId}')">
-                        Best Theoretical - ${this.formatTime(session.bestTheoreticalLap.lapTime)}
-                    </div>
-                `;
-            }
-
-            html += `
-                    </div>
-                </div>
-            `;
-        });
-
-        dropdown.innerHTML = html;
-    }
-
-    selectReferenceSession(targetSessionId: string, currentSessionId: string): void {
-        // This function is called when hovering over a session item
-        // The submenu display is handled by CSS :hover
-    }
-
-    selectReferenceLap(sessionId: string, lapIndex: number, currentSessionId: string): void {
-        const session = studio.sessions.get(sessionId);
-        if (!session) return;
-
-        // Find the lap
-        const lap = session.laps.find(l => l.lapIndex === lapIndex);
-        if (!lap) return;
-
-        // Set this lap as the reference lap
-        studio.setReferenceLap(lap);
-
-        // Update dropdown text
-        const sessionTab = this.sessionTabs.find(tab => tab.id === sessionId);
-        const dropdownText = document.getElementById(`reference-dropdown-text-${currentSessionId}`);
-        if (dropdownText && sessionTab) {
-            dropdownText.textContent = `${sessionTab.filename} - Lap ${lapIndex}`;
-        }
-
-        // Close dropdown
-        const dropdown = document.getElementById(`reference-dropdown-menu-${currentSessionId}`);
-        if (dropdown) {
-            dropdown.style.display = 'none';
-        }
-
-        // Update all graphs and maps for reference change
-        this.graphManager.updateAllGraphsForReferenceChange();
-        this.mapManager.updateAllMapsForReferenceChange();
-    }
-
-    selectBestTheoreticalLap(sessionId: string, currentSessionId: string): void {
-        const session = studio.sessions.get(sessionId);
-        if (!session || !session.bestTheoreticalLap) return;
-
-        // Set the best theoretical lap as the reference lap
-        studio.setReferenceLap(session.bestTheoreticalLap);
-
-        // Update dropdown text
-        const sessionTab = this.sessionTabs.find(tab => tab.id === sessionId);
-        const dropdownText = document.getElementById(`reference-dropdown-text-${currentSessionId}`);
-        if (dropdownText && sessionTab) {
-            dropdownText.textContent = `${sessionTab.filename} - Best Theoretical`;
-        }
-
-        // Close dropdown
-        const dropdown = document.getElementById(`reference-dropdown-menu-${currentSessionId}`);
-        if (dropdown) {
-            dropdown.style.display = 'none';
-        }
-
-        // Update all graphs and maps for reference change
-        this.graphManager.updateAllGraphsForReferenceChange();
-        this.mapManager.updateAllMapsForReferenceChange();
-    }
-
     generateReferenceOptions(): string {
         let options = '';
         
@@ -835,8 +643,7 @@ class RacingDataStudio {
     selectReferenceFromDropdown(currentSessionId: string, value: string): void {
         if (!value) {
             // Clear reference lap
-            studio.setReferenceLap(null);
-            this.updateAllReferenceSelects();
+            studio.setReferenceLap(null, currentSessionId);
             this.graphManager.updateAllGraphsForReferenceChange();
             this.mapManager.updateAllMapsForReferenceChange();
             return;
@@ -853,49 +660,66 @@ class RacingDataStudio {
 
         if (type === 'theoretical' && session.bestTheoreticalLap) {
             // Set best theoretical lap as reference
-            studio.setReferenceLap(session.bestTheoreticalLap);
+            studio.setReferenceLap(session.bestTheoreticalLap, currentSessionId);
         } else if (type === 'lap' && parts.length === 3) {
             const lapIndex = parseInt(parts[2]);
             const lap = session.laps.find(l => l.lapIndex === lapIndex);
             if (lap) {
-                studio.setReferenceLap(lap);
+                studio.setReferenceLap(lap, currentSessionId);
             }
         }
-
-        // Update all reference selects to show the same selection
-        this.updateAllReferenceSelects();
         
         // Update all graphs and maps for reference change
         this.graphManager.updateAllGraphsForReferenceChange();
         this.mapManager.updateAllMapsForReferenceChange();
     }
 
-    updateAllReferenceSelects(): void {
-        const referenceLap = studio.getReferenceLap();
-        let selectedValue = '';
-
-        if (referenceLap) {
-            if (referenceLap === studio.sessions.get(referenceLap.sessionId)?.bestTheoreticalLap) {
-                selectedValue = `${referenceLap.sessionId}:theoretical`;
-            } else {
-                selectedValue = `${referenceLap.sessionId}:lap:${referenceLap.lapIndex}`;
-            }
-        }
-
-        // Update all reference select elements
+    refreshAllReferenceDropdowns(): void {
+        // Update all reference select elements with current session options
         this.sessionTabs.forEach(sessionTab => {
             const select = document.getElementById(`reference-select-${sessionTab.id}`) as HTMLSelectElement;
             if (select) {
-                // Regenerate options to include any new sessions
-                const defaultOption = select.querySelector('option[value=""]');
-                select.innerHTML = '';
-                if (defaultOption) {
-                    select.appendChild(defaultOption);
+                // Store current selection to preserve it if still valid
+                const currentValue = select.value;
+                
+                // Regenerate options with current sessions
+                const newOptions = this.generateReferenceOptions();
+                select.innerHTML = `<option value="">Select Reference Lap</option>${newOptions}`;
+                
+                // Try to restore previous selection if it still exists
+                if (currentValue && this.isValidReferenceOption(currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    // If previous selection is no longer valid, clear it
+                    select.value = '';
+                    
+                    this.graphManager.updateAllGraphsForReferenceChange();
+                    this.mapManager.updateAllMapsForReferenceChange();
                 }
-                select.innerHTML = `<option value="">Select Reference Lap</option>${this.generateReferenceOptions()}`;
-                select.value = selectedValue;
             }
         });
+    }
+
+    isValidReferenceOption(value: string): boolean {
+        if (!value) return true; // Empty value is always valid
+        
+        const parts = value.split(':');
+        if (parts.length < 2) return false;
+        
+        const sessionId = parts[0];
+        const type = parts[1];
+        
+        const session = studio.sessions.get(sessionId);
+        if (!session) return false;
+        
+        if (type === 'theoretical') {
+            return !!session.bestTheoreticalLap;
+        } else if (type === 'lap' && parts.length === 3) {
+            const lapIndex = parseInt(parts[2]);
+            return !!session.laps.find(l => l.lapIndex === lapIndex);
+        }
+        
+        return false;
     }
 
     setupDropdownClickOutside(): void {

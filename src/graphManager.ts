@@ -234,7 +234,7 @@ export class GraphManager {
         }
 
         // Add reference lap data if available
-        const referenceLap = this.studio.getReferenceLap();
+        const referenceLap = this.studio.getReferenceLap(lap.sessionId);
         if (referenceLap && referenceLap !== lap) {
             const refChannel1Data: number[] = [];
             const refChannel2Data: number[] = [];
