@@ -15,7 +15,8 @@ export function calculateSectorTimes(datapoints: Datapoint[], sectorSplits: Poin
 
     // Find the closest datapoint for each sector split and interpolate the exact time
     for (let i = 0; i < sectorSplits.length; i++) {
-        const closestIndex = findClosestDatapointByGPS(datapoints, sectorSplits[i].lat, sectorSplits[i].lon);
+        let closestIndex = 0;
+        if (i > 0) closestIndex = findClosestDatapointByGPS(datapoints, sectorSplits[i].lat, sectorSplits[i].lon);
         const closestDatapoint = datapoints[closestIndex];
         
         // Calculate the exact time at the sector split using interpolation

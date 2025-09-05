@@ -1,4 +1,4 @@
-import { calculateBestTheoreticalLap, reindexLap } from "./lapUtils.js";
+import { calculateBestTheoreticalLap, correctLatLonOffset, reindexLap } from "./lapUtils.js";
 import { calculateSectorTimes, splitIntoSectors } from "./sectorUtils.js";
 import { Session, Track, LapData } from "./types";
 
@@ -19,6 +19,8 @@ export class Studio {
                 sectorSplits: splitIntoSectors(session.laps[session.bestLapIndex].datapoints)
             };
         }
+
+        //correctLatLonOffset(session.laps, this.track.referenceLap);
 
         // Add sector times to complete laps
         for (let i = 1; i < session.laps.length - 1; i++) {

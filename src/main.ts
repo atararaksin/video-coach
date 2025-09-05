@@ -6,6 +6,7 @@ import { VideoManager } from './videoManager.js';
 import { MapManager } from './mapManager.js';
 import { getLapAtTimeForSession, getReferenceDatapointForSession } from './sessionUtils.js';
 import { getDatapointForLap, getReferenceDatapointForLap } from './lapUtils.js';
+import { findDatapointInLapWithInterpolation } from './gpsUtils.js';
 
 const studio = new Studio();
 
@@ -406,12 +407,16 @@ class RacingDataStudio {
         
         if (!deltaBarFill || !deltaText) return;
 
+        // Get current lap
+        const currentLap = getLapAtTimeForSession(session, time);
+        if (!currentLap) return;
+
         // Get reference lap from studio
         const referenceLap = studio.getReferenceLap(sessionId);
         
-        if (!referenceLap) {
-            // No reference lap selected, show placeholder
-            //deltaText.textContent = '--';
+        if (!referenceLap || !referenceLap.isComplete || !currentLap.isComplete) {
+            // No reference lap selected or current lap incomplete, show placeholder
+            deltaText.textContent = '--';
             deltaBarFill.style.width = '0%';
             deltaBarFill.style.left = '50%';
             deltaBarFill.style.backgroundColor = '#ccc';
@@ -419,24 +424,21 @@ class RacingDataStudio {
         }
 
         try {
-            // Get current lap
-            const currentLap = getLapAtTimeForSession(session, time);
-            if (!currentLap) return;
-
             // Get current lap datapoint using getDatapointForLap()
             const currentLapDatapoint = getDatapointForLap(currentLap, time);
             if (!currentLapDatapoint) return;
 
             // Get reference lap datapoint using getReferenceDatapointForLap()
             const referenceLapDatapoint = getReferenceDatapointForLap(currentLap, time, referenceLap);
+            //const referenceLapDatapoint = findDatapointInLapWithInterpolation(currentLap.datapoints, currentLapDatapoint, referenceLap.datapoints);
             if (!referenceLapDatapoint) return;
 
             // Compute diff as specified: currentLapDatapoint.time - currentLap.startTime - referenceLapDatapoint.time + referenceLap.startTime
             const diff = currentLapDatapoint.time - currentLap.lapStartTime - referenceLapDatapoint.time + referenceLap.lapStartTime;
 
             // Update delta text
-            //const sign = diff >= 0 ? '+' : '';
-            //deltaText.textContent = `${sign}${diff.toFixed(3)}s`;
+            const sign = diff >= 0 ? '+' : '';
+            deltaText.textContent = `${sign}${diff.toFixed(3)}s`;
 
             // Update delta bar visualization
             const maxDelta = 1.0; // Maximum delta to show (1 seconds)
@@ -457,7 +459,7 @@ class RacingDataStudio {
             }
         } catch (error) {
             console.error('Error calculating time delta:', error);
-            //deltaText.textContent = '--';
+            deltaText.textContent = '--';
             deltaBarFill.style.width = '0%';
             deltaBarFill.style.left = '50%';
             deltaBarFill.style.backgroundColor = '#ccc';

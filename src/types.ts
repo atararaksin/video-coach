@@ -20,6 +20,7 @@ export interface LapData {
     sectorStartTimes: number[];
     timeToDistanceIndex: TimeToDistanceIndex[];
     datapoints: Datapoint[];
+    isComplete: boolean;
 }
 
 export interface TelemetryHeader {
