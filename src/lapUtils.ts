@@ -32,29 +32,28 @@ export function reindexLap(session: Session, lap: LapData, referenceLap: LapData
     lap.datapoints = interpolatedDatapoints;
     
     // Rebuild timeToDistanceIndex to use the same times but point to indexes of the new datapoints sequence
-    const datapointsByTime: Map<number, number> = new Map();
-    for (let i = 0; i < lap.datapoints.length; i++) {
-        if (lap.datapoints[i] != null) datapointsByTime.set(lap.datapoints[i].time, i);
-    }
+    if (lap.rawTimeToDistanceIndex.length < 2 || lap.datapoints.length < 0) return;
 
-    const sortedTimes = lap.datapoints.filter(dp => dp != null).map(dp => dp.time).sort();
+    const timeStep = lap.rawTimeToDistanceIndex[1].time - lap.rawTimeToDistanceIndex[0].time;
 
-    let sortedTimesIndex = 0;
-    for (let timeToDistanceI = 0; timeToDistanceI < lap.rawTimeToDistanceIndex.length; timeToDistanceI++) {
-        const rawTimeToDistance = lap.rawTimeToDistanceIndex[timeToDistanceI];
-        while (sortedTimesIndex < sortedTimes.length - 1 && sortedTimes[sortedTimesIndex] < rawTimeToDistance.time) {
-            sortedTimesIndex++;
-        }
-
+    for (let time of  lap.rawTimeToDistanceIndex.map(t => t.time)) {
         const timeToDistance = {
-            time: rawTimeToDistance.time,
+            time: time,
             distanceBasedIndex: -1
         };
 
-        if (timeToDistanceI >= lap.rawTimeToDistanceIndex.length - 2
-            || sortedTimes[sortedTimesIndex] < lap.rawTimeToDistanceIndex[timeToDistanceI + 2].time) { // Allow to skip ahead no more than 2 timeSteps
-            
-                timeToDistance.distanceBasedIndex = datapointsByTime.get(sortedTimes[sortedTimesIndex]);
+        let bestDpIdx = 0;
+        let bestDpTimeDiff = Math.abs(lap.datapoints[bestDpIdx].time - time);
+        for (let dpIdx = 1; dpIdx < lap.datapoints.length; dpIdx++) {
+            const dp = lap.datapoints[dpIdx];
+            if (dp == null) continue;
+            if (Math.abs(dp.time - time) < bestDpTimeDiff) {
+                bestDpIdx = dpIdx;
+                bestDpTimeDiff = Math.abs(dp.time - time);
+            }
+        }
+        if (bestDpTimeDiff < 3 * timeStep) { // Allow up to 3 timeSteps of time mismatch
+            timeToDistance.distanceBasedIndex = bestDpIdx;
         }
 
         lap.timeToDistanceIndex.push(timeToDistance);
