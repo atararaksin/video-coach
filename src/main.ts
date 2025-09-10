@@ -168,19 +168,18 @@ class RacingDataStudio {
 
     generateLapTable(session: Session): string {
         // Filter out incomplete laps (first and last are usually incomplete)
-        const completeLaps = session.laps.slice(1, -1);
+        const laps = session.laps;//.slice(1, -1);
         
-        if (completeLaps.length === 0) {
+        if (laps.length === 0) {
             return `
                 <div class="empty-state">
-                    <h2>No Complete Laps Found</h2>
-                    <p>This session doesn't contain any complete lap data.</p>
+                    <h2>No Laps Found</h2>
+                    <p>This session doesn't contain any lap data.</p>
                 </div>
             `;
         }
 
-        // Determine number of sectors from the first complete lap
-        const sectorCount = completeLaps[0].sectorTimes?.length || 0;
+        const sectorCount = studio.track.sectorSplits.length;
         
         // Generate sector headers
         const sectorHeaders = Array.from({length: sectorCount}, (_, i) => 
@@ -188,7 +187,7 @@ class RacingDataStudio {
         ).join('');
 
         // Generate table rows
-        const tableRows = completeLaps.map(lap => {
+        const tableRows = laps.map(lap => {
             const maxSpeed = lap.rawDatapoints.length > 0
                 ? Math.max(...lap.rawDatapoints.map(point => point.data.get("GPS Speed") || 0))
                 : 0;
@@ -513,6 +512,8 @@ class RacingDataStudio {
     }
 
     formatTime(seconds: number): string {
+        if (seconds == null) return "--";
+
         if (seconds < 60) {
             return seconds.toFixed(3) + 's';
         }

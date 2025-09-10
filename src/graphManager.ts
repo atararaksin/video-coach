@@ -6,6 +6,7 @@ export class GraphManager {
     private selectedLaps: Map<string, LapData | null> = new Map(); // sessionId -> selected lap
     private studio: any; // Reference to studio instance
     private currentTimePositions: Map<string, number> = new Map(); // sessionId -> current time position within the lap
+    private timeResolution = 0.1;
 
     constructor(studio: any) {
         this.studio = studio;
@@ -147,8 +148,7 @@ export class GraphManager {
         const selectedLap = this.selectedLaps.get(sessionId);
         if (!selectedLap) return;
 
-        const timeResolution = 0.1;
-        const indexPosition = currentTimePosition / timeResolution;
+        const indexPosition = currentTimePosition / this.timeResolution;
 
         // Find graph canvases only for this specific session
         const sessionGraphs = document.querySelectorAll(`#graphs-container-${sessionId} .graph-panel`);
@@ -186,12 +186,11 @@ export class GraphManager {
     }
 
     renderGraph(canvas: HTMLCanvasElement, lap: LapData, channel1: string, channel2: string): void {
-        const timeResolution = 0.1;
         const timePoints: number[] = [];
         const channel1Data: number[] = [];
         const channel2Data: number[] = [];
 
-        for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += timeResolution) {
+        for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += this.timeResolution) {
             const datapoint = getDatapointForLap(lap, time);
             if (datapoint) {
                 timePoints.push(time - lap.lapStartTime);
@@ -240,7 +239,7 @@ export class GraphManager {
             const refChannel2Data: number[] = [];
 
             // Generate reference lap data using the same time points
-            for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += timeResolution) {
+            for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += this.timeResolution) {
                 const refDatapoint = getReferenceDatapointForLap(lap, time, referenceLap);
 
                 const v = refDatapoint ? refDatapoint.data.get(channel1) || 0 : Number.NaN;
@@ -285,7 +284,7 @@ export class GraphManager {
         if (lap.sectorStartTimes && lap.sectorStartTimes.length > 0) {
             lap.sectorStartTimes.map(t => t - lap.lapStartTime).forEach((splitTime, index) => {
                 // Convert time to index position (splitTime / timeResolution)
-                const indexPosition = splitTime / timeResolution;
+                const indexPosition = splitTime / this.timeResolution;
                 sectorAnnotations[`sector${index + 1}`] = {
                     type: 'line',
                     xMin: indexPosition,
@@ -352,7 +351,7 @@ export class GraphManager {
                         ticks: {
                             callback: function(value: any) {
                                 // Convert index back to time for display
-                                const timeValue = (value as number) * timeResolution;
+                                const timeValue = (value as number) * this.timeResolution;
                                 return timeValue.toFixed(1) + 's';
                             }
                         }
@@ -402,11 +401,11 @@ export class GraphManager {
             (canvas as any).chart = chart;
             
             // Add click event listener for jumping to time
-            this.addClickEventListener(canvas, chart, lap, timeResolution);
+            this.addClickEventListener(canvas, chart, lap);
         }
     }
 
-    private addClickEventListener(canvas: HTMLCanvasElement, chart: any, lap: LapData, timeResolution: number): void {
+    private addClickEventListener(canvas: HTMLCanvasElement, chart: any, lap: LapData): void {
         canvas.addEventListener('click', (event) => {
             try {
                 // Get the chart's scale information using Chart.js helper
@@ -415,7 +414,7 @@ export class GraphManager {
                 
                 if (dataX !== null && dataX >= 0) {
                     // Convert the x-axis index back to time within the lap
-                    const timeInLap = dataX * timeResolution;
+                    const timeInLap = dataX * this.timeResolution;
                     
                     // Calculate the absolute session time
                     const sessionTime = lap.lapStartTime + timeInLap;
