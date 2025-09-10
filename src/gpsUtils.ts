@@ -95,25 +95,12 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
     return R * c; // Distance in meters
 }
 
-export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], currentPoint: Datapoint, refLap: Datapoint[]) {
-        if (!currentPoint.lat || !currentPoint.lon || refLap.length === 0) {
-            return null;
-        }
-
-        // Create a perpendicular line through the current point
-        const currentPointIndex = currentLap.findIndex(point => 
-            Math.abs(point.time - currentPoint.time) < 0.01
-        );
-        
-        if (currentPointIndex === -1) {
-            return null;
-        }
-
+export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], currentPointIndex: number, refLap: Datapoint[], refLapMinTime: number = 0) {
         // Use the same method as sector border crossing to find the intersection
         const perpendicularLine = createPerpendicularLine(currentPointIndex, currentLap);
         
         // Find where the best lap trajectory crosses this perpendicular line
-        const refPoint = findDatapointAtBorderCrossingWithInterpolation(refLap, perpendicularLine);
+        const refPoint = findDatapointAtBorderCrossingWithInterpolation(refLap, perpendicularLine, refLapMinTime);
         
         return refPoint;
     }
@@ -177,7 +164,7 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         };
         
         // Scale the perpendicular vector to desired length (small finite line)
-        const lineLength = 0.00005; // Approximately 5m in degrees
+        const lineLength = 0.00006; // Approximately 6m in degrees
         const perpLat = perpVector.lat * lineLength;
         const perpLon = perpVector.lon * lineLength / cosLat; // Undo cosine correction for final coordinates
         
@@ -193,13 +180,16 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         };
     }
 
-    export function findDatapointAtBorderCrossingWithInterpolation(datapoints: Datapoint[], border: LineSegment): Datapoint {
+    export function findDatapointAtBorderCrossingWithInterpolation(datapoints: Datapoint[], border: LineSegment, minTime: number = 0): Datapoint {
         // Find where the trajectory actually intersects the sector border line
         // This provides much higher precision than just finding the closest point
 
         // Look for actual intersection between consecutive trajectory segments and the border line
         for (let i = 0; i < datapoints.length - 1; i++) {
             const point1 = datapoints[i];
+
+            if (point1.time < minTime) continue;
+
             const point2 = datapoints[i + 1];
             
             // Check if trajectory segment intersects with border line segment
@@ -238,7 +228,7 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         }
         
         // Fallback: if no intersection found, use the closest point method
-        console.log('No intersection found, using closest point method');
+        /*console.log('No intersection found, using closest point method');
         let closestPoint = datapoints[0];
         let minDistance = distanceToLineSegment(closestPoint, border);;
         for (let i = 0; i < datapoints.length; i++) {
@@ -251,7 +241,8 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
             }
         }
         
-        return closestPoint;
+        return closestPoint;*/
+        return null;
     }
 
     // Calculate distance from point to finite line segment (not infinite line)

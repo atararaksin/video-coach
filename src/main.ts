@@ -189,8 +189,8 @@ class RacingDataStudio {
 
         // Generate table rows
         const tableRows = completeLaps.map(lap => {
-            const maxSpeed = lap.datapoints.length > 0
-                ? Math.max(...lap.datapoints.map(point => point.data.get("GPS Speed") || 0))
+            const maxSpeed = lap.rawDatapoints.length > 0
+                ? Math.max(...lap.rawDatapoints.map(point => point.data.get("GPS Speed") || 0))
                 : 0;
 
             const sectorCells = lap.sectorTimes 
@@ -414,8 +414,8 @@ class RacingDataStudio {
         // Get reference lap from studio
         const referenceLap = studio.getReferenceLap(sessionId);
         
-        if (!referenceLap || !referenceLap.isComplete || !currentLap.isComplete) {
-            // No reference lap selected or current lap incomplete, show placeholder
+        if (!referenceLap) {
+            // No reference lap selected, show placeholder
             deltaText.textContent = '--';
             deltaBarFill.style.width = '0%';
             deltaBarFill.style.left = '50%';
@@ -698,7 +698,7 @@ class RacingDataStudio {
         // Add all sessions with their laps
         this.sessionTabs.forEach(sessionTab => {
             const session = sessionTab.session;
-            const completeLaps = session.laps.slice(1, -1); // Filter out incomplete laps
+            const completeLaps = session.laps.filter(lap => lap.isComplete); // Filter out incomplete laps
             
             if (completeLaps.length === 0) return; // Skip sessions with no complete laps
 

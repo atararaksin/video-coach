@@ -12,21 +12,29 @@ export class Studio {
     addSession(session: Session) {
         this.sessions.set(session.id, session);
 
+        const referenceLap = session.laps[session.bestLapIndex];
+
+        //correctLatLonOffset(session.laps, referenceLap);
+
         // Is this is the first session added, initialize Track
         if (this.sessions.size == 1) {
             this.track = {
-                referenceLap: session.laps[session.bestLapIndex],
-                sectorSplits: splitIntoSectors(session.laps[session.bestLapIndex].datapoints)
+                referenceLap: referenceLap,
+                sectorSplits: splitIntoSectors(referenceLap.rawDatapoints)
             };
         }
 
-        //correctLatLonOffset(session.laps, this.track.referenceLap);
+        // Reindex complete laps
+        for (let i = 1; i < session.laps.length - 1; i++) {
+            const lap = session.laps[i];
+            reindexLap(session, lap, this.track.referenceLap);
+        }
 
         // Add sector times to complete laps
         for (let i = 1; i < session.laps.length - 1; i++) {
             const lap = session.laps[i];
             
-            lap.sectorTimes = calculateSectorTimes(lap.datapoints, this.track.sectorSplits, lap.lapTime);
+            lap.sectorTimes = calculateSectorTimes(lap.rawDatapoints, this.track.sectorSplits, lap.lapTime);
 
             lap.sectorStartTimes = [];
             let sectorStartTime = lap.lapStartTime;
@@ -35,16 +43,11 @@ export class Studio {
                 lap.sectorStartTimes.push(sectorStartTime);
             }
         }
-
-        // Reindex complete laps
-        for (let i = 1; i < session.laps.length - 1; i++) {
-            const lap = session.laps[i];
-            reindexLap(lap, this.track.referenceLap);
-        }
-
+        console.log("SESSION");
+console.log(session);
         // Calculate best theoretical lap
-        session.bestTheoreticalLap = calculateBestTheoreticalLap(session.laps.slice(1, -1), this.track.referenceLap);
-        console.log("Best theoretical lap", session.bestTheoreticalLap);
+        //session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
+        //console.log("Best theoretical lap", session.bestTheoreticalLap);
     }
 
     removeSession(sessionId: string) {

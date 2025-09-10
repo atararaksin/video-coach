@@ -242,11 +242,13 @@ export class GraphManager {
             // Generate reference lap data using the same time points
             for (let time = lap.lapStartTime; time <= lap.lapStartTime + lap.lapTime; time += timeResolution) {
                 const refDatapoint = getReferenceDatapointForLap(lap, time, referenceLap);
-                if (refDatapoint) {
-                    refChannel1Data.push(refDatapoint.data.get(channel1) || 0);
-                    if (channel2) {
-                        refChannel2Data.push(refDatapoint.data.get(channel2) || 0);
-                    }
+
+                const v = refDatapoint ? refDatapoint.data.get(channel1) || 0 : Number.NaN;
+                refChannel1Data.push(v);
+
+                if (channel2) {
+                    const v = refDatapoint ? refDatapoint.data.get(channel2) || 0 : Number.NaN;
+                    refChannel2Data.push(v);
                 }
             }
 

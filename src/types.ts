@@ -19,6 +19,8 @@ export interface LapData {
     sectorTimes: number[]; // Durations
     sectorStartTimes: number[];
     timeToDistanceIndex: TimeToDistanceIndex[];
+    rawTimeToDistanceIndex: TimeToDistanceIndex[];
+    rawDatapoints: Datapoint[];
     datapoints: Datapoint[];
     isComplete: boolean;
 }

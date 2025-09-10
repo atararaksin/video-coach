@@ -98,7 +98,7 @@ export class MapManager {
         const view = this.maps.get(sessionId);
         const lapLayer = this.lapGraphics.get(sessionId);
         
-        if (!view || !lapLayer || !lap.datapoints || lap.datapoints.length === 0) {
+        if (!view || !lapLayer || !lap.rawDatapoints || lap.rawDatapoints.length === 0) {
             return;
         }
 
@@ -115,7 +115,7 @@ export class MapManager {
             lapLayer.removeMany(existingGraphics.toArray());
 
             // Create path from datapoints
-            const paths = lap.datapoints.map(point => [point.lon, point.lat]);
+            const paths = lap.rawDatapoints.map(point => [point.lon, point.lat]);
             
             if (paths.length < 2) return;
 

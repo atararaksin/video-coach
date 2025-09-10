@@ -1,49 +1,67 @@
 import { findDatapointInLapWithInterpolation } from "./gpsUtils.js";
-import { Datapoint, LapData, Point, TimeToDistanceIndex } from "./types";
+import { Datapoint, LapData, Point, Session, TimeToDistanceIndex } from "./types";
 
-export function reindexLap(lap: LapData, referenceLap: LapData) {
+export function reindexLap(session: Session, lap: LapData, referenceLap: LapData) {
     console.log("Reindexing lap ", lap.lapIndex);
-    const interpolatedDatapoints: Datapoint[] = [];
-    ``
-    for (let refDpI = 0; refDpI < referenceLap.datapoints.length; refDpI++) {
-        const refDp = referenceLap.datapoints[refDpI];
-        let interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.datapoints, refDp, lap.datapoints);
-        
-        /*if (interpolatedDp == null && refDpI == 0) {
-            interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.datapoints, referenceLap.datapoints[1], lap.datapoints);
-        } else if (interpolatedDp == null && refDpI == referenceLap.datapoints.length - 1) {
-            interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.datapoints, referenceLap.datapoints[referenceLap.datapoints.length - 2], lap.datapoints);
-        }*/
 
-       /* if (interpolatedDp == null) {
-            console.log("!!!", refDpI, refDp.time-referenceLap.lapStartTime);
+    let rawDatapoints = lap.rawDatapoints;
+    // Add a few datapoints from previous and next lap for "context"
+    if (lap.lapIndex > 0) {
+        const prevLap = session.laps[lap.lapIndex - 1];
+        rawDatapoints = prevLap.rawDatapoints.slice(-5).concat(rawDatapoints);
+    }
+    if (lap.lapIndex != -1 && lap.lapIndex < session.laps.length - 1) {
+        const nextLap = session.laps[lap.lapIndex + 1];
+        rawDatapoints = rawDatapoints.concat(nextLap.rawDatapoints.slice(0, 5));
+    }
+
+
+    const interpolatedDatapoints: Datapoint[] = [];
+    for (let refDpI = 0; refDpI < referenceLap.rawDatapoints.length; refDpI++) {
+        let interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.rawDatapoints, refDpI, rawDatapoints);
+
+        if (interpolatedDp == null) {
             lap.isComplete = false;
-            return;
-        }*/
+            console.log("Null dp in lap", lap.lapIndex, "at time", referenceLap.rawDatapoints[refDpI].time - referenceLap.lapStartTime);
+        }
 
         interpolatedDatapoints.push(interpolatedDp);
     }
 
+
     lap.datapoints = interpolatedDatapoints;
     
     // Rebuild timeToDistanceIndex to use the same times but point to indexes of the new datapoints sequence
-    const datapontsByTime: Map<number, number> = new Map();
+    const datapointsByTime: Map<number, number> = new Map();
     for (let i = 0; i < lap.datapoints.length; i++) {
-        datapontsByTime.set(lap.datapoints[i].time, i);
+        if (lap.datapoints[i] != null) datapointsByTime.set(lap.datapoints[i].time, i);
     }
 
-    const sortedTimes = lap.datapoints.map(dp => dp.time).sort();
+    const sortedTimes = lap.datapoints.filter(dp => dp != null).map(dp => dp.time).sort();
 
     let sortedTimesIndex = 0;
-    for (let timeToDistance of lap.timeToDistanceIndex) {
-        while (sortedTimesIndex < sortedTimes.length - 1 && sortedTimes[sortedTimesIndex] < timeToDistance.time) {
+    for (let timeToDistanceI = 0; timeToDistanceI < lap.rawTimeToDistanceIndex.length; timeToDistanceI++) {
+        const rawTimeToDistance = lap.rawTimeToDistanceIndex[timeToDistanceI];
+        while (sortedTimesIndex < sortedTimes.length - 1 && sortedTimes[sortedTimesIndex] < rawTimeToDistance.time) {
             sortedTimesIndex++;
         }
-        timeToDistance.distanceBasedIndex = datapontsByTime.get(sortedTimes[sortedTimesIndex]);
+
+        const timeToDistance = {
+            time: rawTimeToDistance.time,
+            distanceBasedIndex: -1
+        };
+
+        if (timeToDistanceI >= lap.rawTimeToDistanceIndex.length - 2
+            || sortedTimes[sortedTimesIndex] < lap.rawTimeToDistanceIndex[timeToDistanceI + 2].time) { // Allow to skip ahead no more than 2 timeSteps
+            
+                timeToDistance.distanceBasedIndex = datapointsByTime.get(sortedTimes[sortedTimesIndex]);
+        }
+
+        lap.timeToDistanceIndex.push(timeToDistance);
     }
 }
 
-export function getDatapointIndexForLap(lap: LapData, time: number): number {
+export function getTimeToDistanceIndexIdxForLap(lap: LapData, time: number): number {
     const timeToDistanceIndexLength = lap.timeToDistanceIndex.length;
     const timeToDistanceIndexStartTime = lap.timeToDistanceIndex[0].time;
     const timeToDistanceIndexEndTime = lap.timeToDistanceIndex[timeToDistanceIndexLength - 1].time;
@@ -57,23 +75,27 @@ export function getDatapointIndexForLap(lap: LapData, time: number): number {
     // let index = lap.timeToDistanceIndex.find(dp => dp.time >= time).distanceBasedIndex;
     // if (index == null) index = lap.datapoints[lap.timeToDistanceIndex.length - 1].tine;
 
-    return lap.timeToDistanceIndex[index].distanceBasedIndex;
+    return index;
 }
 
 export function getDatapointForLap(lap: LapData, time: number): Datapoint {
-    const index = getDatapointIndexForLap(lap, time);
-    return lap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
+    const index = getTimeToDistanceIndexIdxForLap(lap, time);
+    const dpIdx = lap.timeToDistanceIndex[index].distanceBasedIndex;
+    if (dpIdx == -1) return lap.rawDatapoints[lap.rawTimeToDistanceIndex[index].distanceBasedIndex];
+    else return lap.datapoints[dpIdx];
 }
 
 // For a given base lap at a given point in time, gives a datapoint from the reference lap
 // that is distance-matched to the base lap's datapoint
 export function getReferenceDatapointForLap(lap: LapData, time: number, referenceLap: LapData): Datapoint {
-    const index = getDatapointIndexForLap(lap, time);
-    return referenceLap.datapoints[lap.timeToDistanceIndex[index].distanceBasedIndex];
+    const index = getTimeToDistanceIndexIdxForLap(lap, time);
+    const dpIdx = lap.timeToDistanceIndex[index].distanceBasedIndex;
+    if (dpIdx == -1) return null;
+    else return referenceLap.datapoints[dpIdx];
 }
 
-export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapData): LapData {
-    laps = laps.filter(l => l.isComplete);
+export function calculateBestTheoreticalLap(session: Session, referenceLap: LapData): LapData {
+    const laps = session.laps.filter(l => l.isComplete);
 
     if (laps.length == 0) return null;
 
@@ -123,14 +145,16 @@ export function calculateBestTheoreticalLap(laps: LapData[], referenceLap: LapDa
         sessionId: laps[0].sessionId,
         lapTime: bestTheoreticalLapDuration,
         lapStartTime: 0,
-        datapoints: bestTheoreticalDatapoints,
-        timeToDistanceIndex: bestTheoreticalTimeToDistanceIndex,
+        rawDatapoints: bestTheoreticalDatapoints,
+        datapoints: [],
+        timeToDistanceIndex: [],
+        rawTimeToDistanceIndex: bestTheoreticalTimeToDistanceIndex,
         sectorTimes: bestTheoreticalSectorTimes,
         sectorStartTimes: bestTheoreticalSectorStartTimes,
         isComplete: true
     };
 
-    reindexLap(bestTheoreticalLap, referenceLap);
+    reindexLap(session, bestTheoreticalLap, referenceLap);
 
     return bestTheoreticalLap;
 }
@@ -146,9 +170,9 @@ export function correctLatLonOffset(laps: LapData[], referenceLap: LapData) {
 
         console.log("Calculated GPS offset for lap ", lap.lapIndex, "lat", latOffset, "lon", lonOffset);
 
-        if (Math.abs(latOffset) < 0.00003 || Math.abs(lonOffset) < 0.00003) {// ~ 3m
+        if (Math.abs(latOffset) < 0.00002 || Math.abs(lonOffset) < 0.00002) {// ~ 2m
             console.log("Correcting GPS offset for lap ", lap.lapIndex);
-            for (let dp of lap.datapoints) {
+            for (let dp of lap.rawDatapoints) {
                 dp.lat = dp.lat - latOffset;
                 dp.lon = dp.lon - lonOffset;
 
@@ -167,13 +191,13 @@ function calculateLapCenter(lap: LapData): Point {
     let latSum = 0;
     let lonSum = 0;
 
-    for (let dp of lap.datapoints) {
+    for (let dp of lap.rawDatapoints) {
         latSum += dp.lat;
         lonSum += dp.lon;
     }
 
     return {
-        lat: latSum / lap.datapoints.length,
-        lon: lonSum / lap.datapoints.length
+        lat: latSum / lap.rawDatapoints.length,
+        lon: lonSum / lap.rawDatapoints.length
     }
 }
