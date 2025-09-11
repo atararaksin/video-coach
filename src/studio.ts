@@ -32,7 +32,7 @@ export class Studio {
         // Add sector times to laps
         for (let lap of session.laps) {
             lap.sectorSplitTimes = calculateSectorSplitTimes(lap.datapoints, this.track);
-            lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap.lapStartTime, lap.lapTime);
+            lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap);
         }
 
         console.log("SESSION:", session);

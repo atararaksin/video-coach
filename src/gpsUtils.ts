@@ -95,12 +95,12 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
     return R * c; // Distance in meters
 }
 
-export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], currentPointIndex: number, refLap: Datapoint[], refLapMinTime: number = 0) {
+export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], currentPointIndex: number, refLap: Datapoint[], refLapMinTime?: number, refLapMaxTime?: number) {
         // Use the same method as sector border crossing to find the intersection
         const perpendicularLine = createPerpendicularLine(currentPointIndex, currentLap);
         
         // Find where the best lap trajectory crosses this perpendicular line
-        const refPoint = findDatapointAtBorderCrossingWithInterpolation(refLap, perpendicularLine, refLapMinTime);
+        const refPoint = findDatapointAtBorderCrossingWithInterpolation(refLap, perpendicularLine, refLapMinTime, refLapMaxTime);
         
         return refPoint;
     }
@@ -180,17 +180,17 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         };
     }
 
-    export function findDatapointAtBorderCrossingWithInterpolation(datapoints: Datapoint[], border: LineSegment, minTime: number = 0): Datapoint {
+    export function findDatapointAtBorderCrossingWithInterpolation(datapoints: Datapoint[], border: LineSegment, minTime?: number, maxTime?: number): Datapoint {
         // Find where the trajectory actually intersects the sector border line
         // This provides much higher precision than just finding the closest point
 
         // Look for actual intersection between consecutive trajectory segments and the border line
         for (let i = 0; i < datapoints.length - 1; i++) {
             const point1 = datapoints[i];
-
-            if (point1.time < minTime) continue;
+            if (minTime && point1.time < minTime) continue;
 
             const point2 = datapoints[i + 1];
+            if (maxTime && point2.time > maxTime) continue;
             
             // Check if trajectory segment intersects with border line segment
             const intersection = lineSegmentIntersection(

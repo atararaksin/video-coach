@@ -8,11 +8,13 @@ export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track)
     });
 }
 
-export function calculateSectorTimes(sectorSplitTimes: number[], lapStartTime: number, lapTime: number): number[] {
+export function calculateSectorTimes(sectorSplitTimes: number[], lap: LapData): number[] {
     const sectorTimes = [];
 
-    let sectorStartTime = lapStartTime;
-    const sectorEndTimes = sectorSplitTimes.concat(lapStartTime + lapTime);
+    let sectorStartTime = null;
+    if (lap.datapoints[0] != null) sectorStartTime = lap.lapStartTime;
+
+    const sectorEndTimes = sectorSplitTimes.concat(lap.lapStartTime + lap.lapTime);
     for (let sectorEndTime of sectorEndTimes) {
         if (sectorStartTime != null && sectorEndTime != null) {
             sectorTimes.push(sectorEndTime - sectorStartTime);

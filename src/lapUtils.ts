@@ -4,21 +4,27 @@ import { Datapoint, LapData, Point, Session, TimeToDistanceIndex } from "./types
 export function reindexLap(session: Session, lap: LapData, referenceLap: LapData) {
     console.log("Reindexing lap ", lap.lapIndex);
 
-    let rawDatapoints = lap.rawDatapoints;
-    // Add a few datapoints from previous and next lap for "context"
-    if (lap.lapIndex > 0) {
-        const prevLap = session.laps[lap.lapIndex - 1];
-        rawDatapoints = prevLap.rawDatapoints.slice(-5).concat(rawDatapoints);
-    }
-    if (lap.lapIndex != -1 && lap.lapIndex < session.laps.length - 1) {
-        const nextLap = session.laps[lap.lapIndex + 1];
-        rawDatapoints = rawDatapoints.concat(nextLap.rawDatapoints.slice(0, 5));
-    }
+    const refDpLen = referenceLap.rawDatapoints.length;
 
+    let rawDatapoints = lap.rawDatapoints;
+    // Add a few datapoints from previous/next lap for "context", to make sure we are crossing the ref datapoint
+    if (lap.lapIndex > 0 && lap.lapIndex != -1) {
+        const prevLap = session.laps[lap.lapIndex - 1];
+        rawDatapoints = prevLap.rawDatapoints.slice(-10).concat(rawDatapoints);
+    }
+    if (lap.lapIndex < session.laps.length - 1 && lap.lapIndex != -1) {
+        const nextLap = session.laps[lap.lapIndex + 1];
+        rawDatapoints = rawDatapoints.concat(nextLap.rawDatapoints.slice(0, 10));
+    }
 
     const interpolatedDatapoints: Datapoint[] = [];
-    for (let refDpI = 0; refDpI < referenceLap.rawDatapoints.length; refDpI++) {
-        let interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.rawDatapoints, refDpI, rawDatapoints);
+    for (let refDpI = 0; refDpI < refDpLen; refDpI++) {
+        // Make sure datapoints at the end of the lap don't get detected as start of teh lap datapoints,
+        // and datapoints at the start of the lap don't get detected as end of lap datapoints.
+        const minTime = refDpI > refDpLen * 0.95 ? lap.lapStartTime + lap.lapTime / 2 : undefined;
+        const maxTime = refDpI < refDpLen * 0.05 ? lap.lapStartTime + lap.lapTime / 2 : undefined;
+
+        let interpolatedDp = findDatapointInLapWithInterpolation(referenceLap.rawDatapoints, refDpI, rawDatapoints, minTime, maxTime);
 
         if (interpolatedDp == null) {
             lap.isComplete = false;
@@ -94,7 +100,7 @@ export function getReferenceDatapointForLap(lap: LapData, time: number, referenc
 }
 
 export function calculateBestTheoreticalLap(session: Session, referenceLap: LapData): LapData {
-    const laps = session.laps.filter(l => l.isComplete);
+    const laps = session.laps;
 
     if (laps.length == 0) return null;
 
