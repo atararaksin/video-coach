@@ -1,4 +1,4 @@
-import { Datapoint, Track } from "./types.js";
+import { Datapoint, LapData, Track } from "./types.js";
 
 export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track): number[] {
     return track.sectorSplits.map(dpIdx => {

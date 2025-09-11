@@ -94,48 +94,59 @@ export function getReferenceDatapointForLap(lap: LapData, time: number, referenc
 }
 
 export function calculateBestTheoreticalLap(session: Session, referenceLap: LapData): LapData {
-   /* const laps = session.laps.filter(l => l.isComplete);
+    const laps = session.laps.filter(l => l.isComplete);
 
     if (laps.length == 0) return null;
 
     const sectorCount = laps[0].sectorTimes.length;
-    const bestTheoreticalDatapoints: Datapoint[] = [];
-    const bestTheoreticalTimeToDistanceIndex: TimeToDistanceIndex[] = [];
+    const bestTheoreticalRawDatapoints: Datapoint[] = [];
+    const bestTheoreticalRawTimeToDistanceIndex: TimeToDistanceIndex[] = [];
     const bestTheoreticalSectorTimes: number[] = [];
-    const bestTheoreticalSectorStartTimes: number[] = [];
+    const bestTheoreticalSectorSplitTimes: number[] = [];
 
     for (let sectorI = 0; sectorI < sectorCount; sectorI++) {
-        const bestSectorTime = laps
-            .filter(l => l.sectorTimes[sectorI] > 0) // TODO
-            .map(l => l.sectorTimes[sectorI])
-            .reduce((a, b) => Math.min(a, b));
-        const bestSectorLap = laps.find(l => l.sectorTimes[sectorI] == bestSectorTime);
-        const bestSectorStartTime = sectorI == 0 ? bestSectorLap.lapStartTime : bestSectorLap.sectorStartTimes[sectorI - 1];
+        const bestSectorLap = laps
+            .filter(l => l.sectorTimes[sectorI] != null)
+            .sort((a, b) => a.sectorTimes[sectorI] - b.sectorTimes[sectorI])[0];
+        if (!bestSectorLap) console.log("bestSectorLap undefined for sectorI=", sectorI);
+        const bestSectorTime = bestSectorLap.sectorTimes[sectorI];
+        const bestSectorStartTime = sectorI == 0 ? bestSectorLap.lapStartTime : bestSectorLap.sectorSplitTimes[sectorI - 1];
 
-        for (let dp of bestSectorLap.datapoints) {
+        for (let dp of bestSectorLap.rawDatapoints) {
             if (dp.time < bestSectorStartTime) continue; // Not yet reached the sector
-            if (sectorI < sectorCount - 1 && dp.time >= bestSectorLap.sectorStartTimes[sectorI]) break; // Passed the sector
+            if (sectorI < sectorCount - 1 && dp.time >= bestSectorLap.sectorSplitTimes[sectorI]) break; // Passed the sector
 
             const newDp = Object.assign({}, dp);
             newDp.time = dp.time - bestSectorStartTime + bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
             newDp.data.set("Time", newDp.time);
 
-            bestTheoreticalDatapoints.push(newDp);
+            bestTheoreticalRawDatapoints.push(newDp);
         }
 
         bestTheoreticalSectorTimes.push(bestSectorTime);
-        bestTheoreticalSectorStartTimes.push(bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0));
+        if (sectorI > 0) {
+            bestTheoreticalSectorSplitTimes.push(bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0));
+        }
     }
 
     const bestTheoreticalLapDuration = bestTheoreticalSectorTimes.reduce((a, b) => a + b, 0);
 
-    bestTheoreticalDatapoints.sort((a, b) => a.time - b.time);
+    bestTheoreticalRawDatapoints.sort((a, b) => a.time - b.time);
 
-    const timeStep = laps[0].datapoints[1].time - laps[0].datapoints[0].time;
+    const timeStep = laps[session.bestLapIndex].rawTimeToDistanceIndex[1].time - laps[session.bestLapIndex].rawTimeToDistanceIndex[0].time;
     for (let time = 0; time < bestTheoreticalLapDuration; time += timeStep) {
-        bestTheoreticalTimeToDistanceIndex.push({
+        let bestDpIdx = 0;
+        let bestDpTimeDiff = Number.MAX_VALUE;
+        for (let dpIdx = 0; dpIdx < bestTheoreticalRawDatapoints.length; dpIdx++) {
+            const timeDiff = Math.abs(bestTheoreticalRawDatapoints[dpIdx].time - time);
+            if (timeDiff < bestDpTimeDiff) {
+                bestDpTimeDiff = timeDiff;
+                bestDpIdx = dpIdx;
+            }
+        }
+        bestTheoreticalRawTimeToDistanceIndex.push({
             time: time,
-            distanceBasedIndex: 0 // Will be filled later during lap reindexing
+            distanceBasedIndex: bestDpIdx
         });
     }
 
@@ -144,18 +155,18 @@ export function calculateBestTheoreticalLap(session: Session, referenceLap: LapD
         sessionId: laps[0].sessionId,
         lapTime: bestTheoreticalLapDuration,
         lapStartTime: 0,
-        rawDatapoints: bestTheoreticalDatapoints,
+        rawDatapoints: bestTheoreticalRawDatapoints,
         datapoints: [],
         timeToDistanceIndex: [],
-        rawTimeToDistanceIndex: bestTheoreticalTimeToDistanceIndex,
+        rawTimeToDistanceIndex: bestTheoreticalRawTimeToDistanceIndex,
         sectorTimes: bestTheoreticalSectorTimes,
-        sectorStartTimes: bestTheoreticalSectorStartTimes,
+        sectorSplitTimes: bestTheoreticalSectorSplitTimes,
         isComplete: true
     };
 
     reindexLap(session, bestTheoreticalLap, referenceLap);
 
-    return bestTheoreticalLap;*/ return null;
+    return bestTheoreticalLap;
 }
 
 export function correctLatLonOffset(laps: LapData[], referenceLap: LapData) {

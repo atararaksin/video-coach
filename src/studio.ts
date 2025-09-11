@@ -38,8 +38,8 @@ export class Studio {
         console.log("SESSION:", session);
 
         // Calculate best theoretical lap
-        //session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
-        //console.log("Best theoretical lap", session.bestTheoreticalLap);
+        session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
+        console.log("Best theoretical lap", session.bestTheoreticalLap);
     }
 
     removeSession(sessionId: string) {
