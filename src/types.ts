@@ -17,7 +17,7 @@ export interface LapData {
     lapTime: number;
     lapStartTime: number;
     sectorTimes: number[]; // Durations
-    sectorStartTimes: number[];
+    sectorSplitTimes: number[];
     timeToDistanceIndex: TimeToDistanceIndex[];
     rawTimeToDistanceIndex: TimeToDistanceIndex[];
     rawDatapoints: Datapoint[];
@@ -50,5 +50,5 @@ export interface Point {
 
 export interface Track {
     referenceLap: LapData; // Datapoints used to index all other laps from all sessions
-    sectorSplits: Point[]; // Includes start of lap point as the first element
+    sectorSplits: number[]; // Indexes of reference lap datapoints that correspond to splits. Includes start of lap point as the first element.
 }

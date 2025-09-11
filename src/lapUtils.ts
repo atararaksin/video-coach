@@ -43,8 +43,8 @@ export function reindexLap(session: Session, lap: LapData, referenceLap: LapData
         };
 
         let bestDpIdx = 0;
-        let bestDpTimeDiff = Math.abs(lap.datapoints[bestDpIdx].time - time);
-        for (let dpIdx = 1; dpIdx < lap.datapoints.length; dpIdx++) {
+        let bestDpTimeDiff = Number.MAX_VALUE;
+        for (let dpIdx = 0; dpIdx < lap.datapoints.length; dpIdx++) {
             const dp = lap.datapoints[dpIdx];
             if (dp == null) continue;
             if (Math.abs(dp.time - time) < bestDpTimeDiff) {
@@ -94,7 +94,7 @@ export function getReferenceDatapointForLap(lap: LapData, time: number, referenc
 }
 
 export function calculateBestTheoreticalLap(session: Session, referenceLap: LapData): LapData {
-    const laps = session.laps.filter(l => l.isComplete);
+   /* const laps = session.laps.filter(l => l.isComplete);
 
     if (laps.length == 0) return null;
 
@@ -155,7 +155,7 @@ export function calculateBestTheoreticalLap(session: Session, referenceLap: LapD
 
     reindexLap(session, bestTheoreticalLap, referenceLap);
 
-    return bestTheoreticalLap;
+    return bestTheoreticalLap;*/ return null;
 }
 
 export function correctLatLonOffset(laps: LapData[], referenceLap: LapData) {

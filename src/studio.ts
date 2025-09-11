@@ -1,5 +1,5 @@
 import { calculateBestTheoreticalLap, correctLatLonOffset, reindexLap } from "./lapUtils.js";
-import { calculateSectorTimes, splitIntoSectors } from "./sectorUtils.js";
+import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits } from "./sectorUtils.js";
 import { Session, Track, LapData } from "./types";
 
 export class Studio {
@@ -12,39 +12,31 @@ export class Studio {
     addSession(session: Session) {
         this.sessions.set(session.id, session);
 
-        const referenceLap = session.laps[session.bestLapIndex];
+        const referenceLap = this.track ? this.track.referenceLap : session.laps[session.bestLapIndex];
 
         //correctLatLonOffset(session.laps, referenceLap);
 
+        // Reindex complete laps
+        for (let lap of session.laps) {
+            reindexLap(session, lap, referenceLap);
+        }
+
         // Is this is the first session added, initialize Track
-        if (this.sessions.size == 1) {
+        if (!this.track) {
             this.track = {
                 referenceLap: referenceLap,
-                sectorSplits: splitIntoSectors(referenceLap.rawDatapoints)
+                sectorSplits: generateSectorSplits(referenceLap.datapoints)
             };
         }
 
-        // Reindex complete laps
-        for (let i = 1; i < session.laps.length - 1; i++) {
-            const lap = session.laps[i];
-            reindexLap(session, lap, this.track.referenceLap);
+        // Add sector times to laps
+        for (let lap of session.laps) {
+            lap.sectorSplitTimes = calculateSectorSplitTimes(lap.datapoints, this.track);
+            lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap.lapStartTime, lap.lapTime);
         }
 
-        // Add sector times to complete laps
-        for (let i = 1; i < session.laps.length - 1; i++) {
-            const lap = session.laps[i];
-            
-            lap.sectorTimes = calculateSectorTimes(lap.rawDatapoints, this.track.sectorSplits, lap.lapTime);
+        console.log("SESSION:", session);
 
-            lap.sectorStartTimes = [];
-            let sectorStartTime = lap.lapStartTime;
-            for (let sectorTime of lap.sectorTimes) {
-                sectorStartTime += sectorTime;
-                lap.sectorStartTimes.push(sectorStartTime);
-            }
-        }
-        console.log("SESSION");
-console.log(session);
         // Calculate best theoretical lap
         //session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
         //console.log("Best theoretical lap", session.bestTheoreticalLap);

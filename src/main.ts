@@ -54,7 +54,7 @@ class RacingDataStudio {
         // Navigation panel functions
         (window as any).jumpToLap = (sessionId: string, lapIndex: number) => this.jumpToLap(sessionId, lapIndex);
         (window as any).jumpToLapStart = (sessionId: string, lapIndex: number) => this.jumpToLapStart(sessionId, lapIndex);
-        (window as any).jumpToSector = (sessionId: string, lapIndex: number, sectorIndex: number) => this.jumpToSector(sessionId, lapIndex, sectorIndex);
+        (window as any).jumpToSplit = (sessionId: string, lapIndex: number, splitIndex: number) => this.jumpToSplit(sessionId, lapIndex, splitIndex);
         
         // Reference lap dropdown functions
         (window as any).selectReferenceFromDropdown = (currentSessionId: string, value: string) => this.selectReferenceFromDropdown(currentSessionId, value);
@@ -179,7 +179,7 @@ class RacingDataStudio {
             `;
         }
 
-        const sectorCount = studio.track.sectorSplits.length;
+        const sectorCount = studio.track.sectorSplits.length + 1;
         
         // Generate sector headers
         const sectorHeaders = Array.from({length: sectorCount}, (_, i) => 
@@ -192,11 +192,9 @@ class RacingDataStudio {
                 ? Math.max(...lap.rawDatapoints.map(point => point.data.get("GPS Speed") || 0))
                 : 0;
 
-            const sectorCells = lap.sectorTimes 
-                ? lap.sectorTimes.map(time => 
-                    `<td class="sector-time">${this.formatTime(time)}</td>`
-                  ).join('')
-                : Array.from({length: sectorCount}, () => '<td class="sector-time">-</td>').join('');
+            const sectorCells = lap.sectorTimes.map(time => 
+                `<td class="sector-time">${this.formatTime(time)}</td>`
+            ).join('');
 
             return `
                 <tr onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
@@ -281,29 +279,25 @@ class RacingDataStudio {
     }
 
     generateNavigationTable(session: Session): string {
-        // Filter out incomplete laps (first and last are usually incomplete)
-        const completeLaps = session.laps.slice(1, -1);
-        
-        if (completeLaps.length === 0) {
+        if (session.laps.length === 0) {
             return '<div class="navigation-panel"></div>';
         }
 
         // Get sector count from studio track
-        const sectorCount = studio.track ? studio.track.sectorSplits.length - 1 : 0;
+        const splitCount = studio.track.sectorSplits.length;
         
         // Generate sector headers
-        const sectorHeaders = Array.from({length: sectorCount}, (_, i) => 
+        const sectorHeaders = Array.from({length: splitCount}, (_, i) => 
             `<th>S${i + 1}</th>`
         ).join('');
 
         // Generate table rows
-        const tableRows = completeLaps.map(lap => {
-            // Generate sector cells using sectorStartTimes
-            const sectorCells = lap.sectorStartTimes
-                ? lap.sectorStartTimes.slice(1,).map((startTime, index) => 
-                    `<td class="sector-cell" onclick="jumpToSector('${session.id}', ${lap.lapIndex}, ${index})" title="Jump to sector ${index + 1}">S${index + 1}</td>`
-                  ).join('')
-                : Array.from({length: sectorCount}, () => '<td class="sector-cell">-</td>').join('');
+        const tableRows = session.laps.map(lap => {
+            // Generate sector cells using sectorSplitTimes
+            const sectorCells = lap.sectorSplitTimes.map((splitTime, index) => {
+                if (splitTime != null) return `<td class="sector-cell" onclick="jumpToSplit('${session.id}', ${lap.lapIndex}, ${index})" title="Jump to split ${index + 1}">S${index + 1}</td>`;
+                else return `<td class="sector-cell" title="--">--</td>`;
+            }).join('');
 
             return `
                 <tr>
@@ -672,20 +666,23 @@ class RacingDataStudio {
         this.updateAllUIToTime(targetLap.lapStartTime, 'ui', sessionId);
     }
 
-    jumpToSector(sessionId: string, lapIndex: number, sectorIndex: number): void {
+    jumpToSplit(sessionId: string, lapIndex: number, splitIndex: number): void {
         const session = studio.sessions.get(sessionId);
         if (!session) return;
 
         // Find the target lap
         const targetLap = session.laps.find(l => l.lapIndex === lapIndex);
-        if (!targetLap || !targetLap.sectorStartTimes) return;
+        if (!targetLap) return;
 
         // Check if the sector index is valid
-        if (sectorIndex < 0 || sectorIndex >= targetLap.sectorStartTimes.length) return;
+        if (splitIndex < 0 || splitIndex >= targetLap.sectorSplitTimes.length) return;
 
         // Jump to the sector start time
-        const sectorStartTime = targetLap.sectorStartTimes[sectorIndex];
-        this.updateAllUIToTime(sectorStartTime, 'ui', sessionId);
+        const sectorSplitTime = targetLap.sectorSplitTimes[splitIndex];
+
+        if (sectorSplitTime != null) {
+            this.updateAllUIToTime(sectorSplitTime, 'ui', sessionId);
+        }
     }
 
     initializeMapForSession(sessionId: string): void {

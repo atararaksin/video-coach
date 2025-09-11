@@ -281,28 +281,31 @@ export class GraphManager {
 
         // Create sector split annotations
         const sectorAnnotations: any = {};
-        if (lap.sectorStartTimes && lap.sectorStartTimes.length > 0) {
-            lap.sectorStartTimes.map(t => t - lap.lapStartTime).forEach((splitTime, index) => {
-                // Convert time to index position (splitTime / timeResolution)
-                const indexPosition = splitTime / this.timeResolution;
-                sectorAnnotations[`sector${index + 1}`] = {
-                    type: 'line',
-                    xMin: indexPosition,
-                    xMax: indexPosition,
-                    borderColor: 'rgba(126, 125, 125, 0.8)',
-                    borderWidth: 1,
-                    label: {
-                        display: true,
-                        content: `S${index + 1}`,
-                        position: 'start',
-                        backgroundColor: 'rgba(126, 125, 125, 0.8)',
-                        color: 'white',
-                        font: {
-                            size: 10
+        if (lap.sectorSplitTimes && lap.sectorSplitTimes.length > 0) {
+            lap.sectorSplitTimes
+                .map(t => t == null ? null : t - lap.lapStartTime)
+                .forEach((splitTime, index) => {
+                    if (splitTime == null) return;
+                    // Convert time to index position (splitTime / timeResolution)
+                    const indexPosition = splitTime / this.timeResolution;
+                    sectorAnnotations[`sector${index + 1}`] = {
+                        type: 'line',
+                        xMin: indexPosition,
+                        xMax: indexPosition,
+                        borderColor: 'rgba(126, 125, 125, 0.8)',
+                        borderWidth: 1,
+                        label: {
+                            display: true,
+                            content: `S${index + 1}`,
+                            position: 'start',
+                            backgroundColor: 'rgba(126, 125, 125, 0.8)',
+                            color: 'white',
+                            font: {
+                                size: 10
+                            }
                         }
-                    }
-                };
-            });
+                    };
+                });
         }
 
         // Add current position annotation placeholder

@@ -1,91 +1,34 @@
-import { Datapoint, Point } from "./types.js";
-import { findClosestDatapointIndex as findClosestDatapointByGPS, calculateDistance } from "./gpsUtils.js";
+import { Datapoint, Track } from "./types.js";
 
-export function calculateSectorTimes(datapoints: Datapoint[], sectorSplits: Point[], lapTime: number): number[] {
-    if (sectorSplits.length < 2) {
-        throw new Error('At least 2 sector splits are required (start and one split point)');
+export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track): number[] {
+    return track.sectorSplits.map(dpIdx => {
+        const dp = datapoints[dpIdx];
+        if (dp == null) return null;
+        else return dp.time;
+    });
+}
+
+export function calculateSectorTimes(sectorSplitTimes: number[], lapStartTime: number, lapTime: number): number[] {
+    const sectorTimes = [];
+
+    let sectorStartTime = lapStartTime;
+    const sectorEndTimes = sectorSplitTimes.concat(lapStartTime + lapTime);
+    for (let sectorEndTime of sectorEndTimes) {
+        if (sectorStartTime != null && sectorEndTime != null) {
+            sectorTimes.push(sectorEndTime - sectorStartTime);
+        } else {
+            sectorTimes.push(null);
+        }
+        sectorStartTime = sectorEndTime;
     }
     
-    if (datapoints.length === 0) {
-        throw new Error('Datapoints array cannot be empty');
-    }
-
-    const sectorTimes: number[] = [];
-    const splitTimes: number[] = [];
-
-    // Find the closest datapoint for each sector split and interpolate the exact time
-    for (let i = 0; i < sectorSplits.length; i++) {
-        let closestIndex = 0;
-        if (i > 0) closestIndex = findClosestDatapointByGPS(datapoints, sectorSplits[i].lat, sectorSplits[i].lon);
-        const closestDatapoint = datapoints[closestIndex];
-        
-        // Calculate the exact time at the sector split using interpolation
-        let interpolatedTime: number;
-        
-        if (closestIndex === 0) {
-            // If it's the first datapoint, use its time directly
-            interpolatedTime = closestDatapoint.time;
-        } else if (closestIndex === datapoints.length - 1) {
-            // If it's the last datapoint, use its time directly
-            interpolatedTime = closestDatapoint.time;
-        } else {
-            // Interpolate between the closest datapoint and its neighbors
-            const prevDatapoint = datapoints[closestIndex - 1];
-            const nextDatapoint = datapoints[closestIndex + 1];
-            
-            // Calculate distances to determine which neighbor to use for interpolation
-            const distToPrev = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, prevDatapoint.lat, prevDatapoint.lon);
-            const distToNext = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, nextDatapoint.lat, nextDatapoint.lon);
-            
-            // Choose the pair of datapoints that bracket the sector split
-            let point1: Datapoint, point2: Datapoint;
-            
-            if (distToPrev < distToNext) {
-                // Interpolate between previous and current
-                point1 = prevDatapoint;
-                point2 = closestDatapoint;
-            } else {
-                // Interpolate between current and next
-                point1 = closestDatapoint;
-                point2 = nextDatapoint;
-            }
-            
-            // Linear interpolation based on distance ratios
-            const totalDist = calculateDistance(point1.lat, point1.lon, point2.lat, point2.lon);
-            const distFromPoint1 = calculateDistance(sectorSplits[i].lat, sectorSplits[i].lon, point1.lat, point1.lon);
-            
-            if (totalDist === 0) {
-                interpolatedTime = point1.time;
-            } else {
-                const ratio = distFromPoint1 / totalDist;
-                interpolatedTime = point1.time + ratio * (point2.time - point1.time);
-            }
-        }
-        
-        splitTimes.push(interpolatedTime);
-    }
-
-    // Calculate sector times as differences between consecutive split times
-    for (let i = 1; i < splitTimes.length; i++) {
-        const sectorTime = splitTimes[i] - splitTimes[i - 1];
-        sectorTimes.push(sectorTime);
-    }
-
-    // Calculate the last sector time as the difference between total lap time 
-    // and the sum of all previous sector times
-    if (sectorTimes.length > 0) {
-        const sumOfPreviousSectors = sectorTimes.reduce((sum, time) => sum + time, 0);
-        const lastSectorTime = lapTime - sumOfPreviousSectors;
-        sectorTimes.push(lastSectorTime);
-    }
-
     return sectorTimes;
 }
 
 // First point in the array is start of the lap
-export function splitIntoSectors(datapoints: Datapoint[]): Point[] {
+export function generateSectorSplits(datapoints: Datapoint[]): number[] {
     if (datapoints.length < 2) {
-        return datapoints.map(dp => ({ lat: dp.lat, lon: dp.lon }));
+        return [0];
     }
 
     // Step 1: Find deceleration periods
@@ -125,19 +68,9 @@ export function splitIntoSectors(datapoints: Datapoint[]): Point[] {
     // Step 4: Merge sectors shorter than 4 seconds
     const finalSplitPoints = mergeShortSectors(datapoints, uniqueSplitPoints);
 
-    // Step 5: Add the first datapoint as lap start
-    finalSplitPoints.unshift(0); // Insert at the start of array
+    console.log("Sector split points:", finalSplitPoints);
 
-    
-    // Convert indices to Points
-    const points = finalSplitPoints.map(index => ({
-        lat: datapoints[index].lat,
-        lon: datapoints[index].lon
-    }));
-
-    console.log("Sector split points:", points);
-
-    return points;
+    return finalSplitPoints;
 }
 
 interface Period {
