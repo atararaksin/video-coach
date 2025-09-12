@@ -34,6 +34,7 @@ class RacingDataStudio {
         this.setupTimeSync();
         this.setupStudioTimeSync();
         this.setupDropdownClickOutside();
+        this.setupHotkeys();
     }
 
     setupGlobalFunctions(): void {
@@ -815,6 +816,77 @@ class RacingDataStudio {
                 });
             }
         });
+    }
+
+    setupHotkeys(): void {
+        document.addEventListener('keydown', (event) => {
+            // Only handle hotkeys if no input elements are focused
+            const activeElement = document.activeElement;
+            if (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' || 
+                activeElement.tagName === 'SELECT' ||
+                activeElement.hasAttribute('contenteditable')
+            )) {
+                return;
+            }
+
+            // Only handle hotkeys if there's an active session
+            if (!this.activeSessionId) {
+                return;
+            }
+
+            switch (event.key) {
+                case 'ArrowUp':
+                    event.preventDefault();
+                    this.adjustCurrentLap(-1);
+                    break;
+                case 'ArrowDown':
+                    event.preventDefault();
+                    this.adjustCurrentLap(1);
+                    break;
+                case 'ArrowLeft':
+                    event.preventDefault();
+                    this.adjustCurrentTime(-0.05);
+                    break;
+                case 'ArrowRight':
+                    event.preventDefault();
+                    this.adjustCurrentTime(0.05);
+                    break;
+            }
+        });
+    }
+
+    adjustCurrentLap(deltaLaps: number): void {
+        if (!this.activeSessionId) return;
+
+        const session = studio.sessions.get(this.activeSessionId);
+        if (!session) return;
+
+        const currentTime = studio.currentTimes.get(this.activeSessionId) || 0;
+        const currentLap = getLapAtTimeForSession(session, currentTime);
+        
+        if (!currentLap) return;
+
+        // Find adjusted lap
+        const currentLapIndex = currentLap.lapIndex;
+        const adjustedLap = session.laps.find(lap => lap.lapIndex === currentLapIndex + deltaLaps);
+        
+        if (adjustedLap) {
+            this.jumpToLap(this.activeSessionId, adjustedLap.lapIndex);
+        }
+    }
+
+    adjustCurrentTime(deltaSeconds: number): void {
+        if (!this.activeSessionId) return;
+
+        const session = studio.sessions.get(this.activeSessionId);
+        if (!session) return;
+
+        const currentTime = studio.currentTimes.get(this.activeSessionId) || 0;
+        const newTime = Math.min(Math.max(0, currentTime + deltaSeconds), session.duration);
+        
+        this.updateAllUIToTime(newTime, 'ui', this.activeSessionId);
     }
 }
 

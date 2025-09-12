@@ -125,7 +125,7 @@ export class VideoManager {
         
         // Only update if the video time is valid and different from current time
         if (videoTime >= 0 && videoTime <= video.duration && 
-            Math.abs(video.currentTime - videoTime) > 0.1) {
+            Math.abs(video.currentTime - videoTime) > 0.01) {
             this.isVideoSeeking.set(activeSessionId, true);
             video.currentTime = videoTime;
             // isVideoSeeking will be reset in the 'seeked' event listener
