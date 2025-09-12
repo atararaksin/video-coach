@@ -649,9 +649,6 @@ class RacingDataStudio {
         
         if (referenceDatapoint) {
             this.updateAllUIToTime(referenceDatapoint.time, 'ui', sessionId);
-        } else {
-            // Fallback to lap start if no reference datapoint found
-            this.updateAllUIToTime(targetLap.lapStartTime, 'ui', sessionId);
         }
     }
 
