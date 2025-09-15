@@ -48,7 +48,19 @@ export interface Point {
     lon: number;
 }
 
+export interface LineSegment {
+    startLat: number;
+    startLon: number;
+    endLat: number;
+    endLon: number;
+}
+
 export interface Track {
     referenceLap: LapData; // Datapoints used to index all other laps from all sessions
-    sectorSplits: number[]; // Indexes of reference lap datapoints that correspond to splits. Includes start of lap point as the first element.
+    sectorSplits: SectorSplit[]; // Indexes of reference lap datapoints that correspond to splits. Includes start of lap point as the first element.
+}
+
+export interface SectorSplit {
+    datapointIndex: number; // Normalized index in track's reference lap
+    border: LineSegment;
 }

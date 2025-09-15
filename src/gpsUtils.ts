@@ -1,15 +1,4 @@
-import { Datapoint } from "./types";
-
-interface LineSegment {
-            centerLat: number;
-            centerLon: number;
-            trajectoryVector: Vector;
-            perpVector: Vector;
-            startLat: number;
-            startLon: number;
-            endLat: number;
-            endLon: number;
-        }
+import { Datapoint, LineSegment } from "./types";
 
 interface Vector {
     lat: number;
@@ -105,7 +94,7 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         return refPoint;
     }
 
-    function createPerpendicularLine(dpIndex: number, datapoints: Datapoint[]): LineSegment {
+export function createPerpendicularLine(dpIndex: number, datapoints: Datapoint[]): LineSegment {
         // Calculate trajectory direction using nearby points
         const lookAhead = Math.min(5, datapoints.length - dpIndex - 1);
         const lookBehind = Math.min(5, dpIndex);
@@ -169,10 +158,6 @@ export function findDatapointInLapWithInterpolation(currentLap: Datapoint[], cur
         const perpLon = perpVector.lon * lineLength / cosLat; // Undo cosine correction for final coordinates
         
         return {
-            centerLat: datapoints[dpIndex].lat,
-            centerLon: datapoints[dpIndex].lon,
-            trajectoryVector: trajectoryVector,
-            perpVector: perpVector,
             startLat: datapoints[dpIndex].lat - perpLat,
             startLon: datapoints[dpIndex].lon - perpLon,
             endLat: datapoints[dpIndex].lat + perpLat,

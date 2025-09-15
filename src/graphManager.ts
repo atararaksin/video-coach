@@ -49,6 +49,8 @@ export class GraphManager {
                             ${channelOptions}
                         </select>
                     </div>
+                    <button class="add-sector-split-btn" onclick="addSectorSplitAtCurrentTime('${sessionId}')" title="Add sector split at current time">+ Split</button>
+                    <button class="remove-sector-split-btn" onclick="removeSectorSplitAtCurrentTime('${sessionId}')" title="Remove sector split near current time">- Split</button>
                     <button class="remove-graph-btn" onclick="removeGraph('${graphId}')">×</button>
                 </div>
             </div>
@@ -308,17 +310,20 @@ export class GraphManager {
                 });
         }
 
+
         // Add current position annotation placeholder
+        const currentTimePosition = this.currentTimePositions.get(lap.sessionId);
+        const indexPosition = currentTimePosition / this.timeResolution;
         sectorAnnotations.currentPosition = {
             type: 'line',
-            xMin: 0,
-            xMax: 0,
+            xMin: indexPosition,
+            xMax: indexPosition,
             borderColor: 'rgba(255, 0, 0, 0.8)',
             borderWidth: 1,
-            display: false, // Initially hidden
+            display: true,
             label: {
                 display: true,
-                content: '0.0s',
+                content: `${currentTimePosition.toFixed(1)}s`,
                 position: 'end',
                 backgroundColor: 'rgba(255, 0, 0, 0.8)',
                 color: 'white',

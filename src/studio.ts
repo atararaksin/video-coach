@@ -1,6 +1,6 @@
-import { calculateBestTheoreticalLap, correctLatLonOffset, reindexLap } from "./lapUtils.js";
+import { calculateBestTheoreticalLap, reindexLap } from "./lapUtils.js";
 import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits } from "./sectorUtils.js";
-import { Session, Track, LapData } from "./types";
+import { Session, Track, LapData, SectorSplit } from "./types";
 
 export class Studio {
     public track: Track;
@@ -25,21 +25,11 @@ export class Studio {
         if (!this.track) {
             this.track = {
                 referenceLap: referenceLap,
-                sectorSplits: generateSectorSplits(referenceLap.datapoints)
+                sectorSplits: []
             };
         }
 
-        // Add sector times to laps
-        for (let lap of session.laps) {
-            lap.sectorSplitTimes = calculateSectorSplitTimes(lap.datapoints, this.track);
-            lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap);
-        }
-
-        console.log("SESSION:", session);
-
-        // Calculate best theoretical lap
-        session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
-        console.log("Best theoretical lap", session.bestTheoreticalLap);
+        this.setTrackSectorSplits(generateSectorSplits(referenceLap.datapoints));
     }
 
     removeSession(sessionId: string) {
@@ -63,5 +53,23 @@ export class Studio {
 
     getReferenceLap(sessionId: string): LapData | null {
         return this.referenceLaps.get(sessionId);
+    }
+
+    setTrackSectorSplits(sectorSplits: SectorSplit[]) {
+        this.track.sectorSplits = sectorSplits;
+
+        for (let session of this.sessions.values()) {
+            // Add sector times to laps
+            for (let lap of session.laps) {
+                lap.sectorSplitTimes = calculateSectorSplitTimes(lap.datapoints, this.track);
+                lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap);
+            }
+
+            console.log("SESSION:", session);
+
+            // Calculate best theoretical lap
+            session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
+            console.log("Best theoretical lap", session.bestTheoreticalLap);
+        }
     }
 }

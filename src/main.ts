@@ -6,7 +6,7 @@ import { VideoManager } from './videoManager.js';
 import { MapManager } from './mapManager.js';
 import { getLapAtTimeForSession, getReferenceDatapointForSession } from './sessionUtils.js';
 import { getDatapointForLap, getReferenceDatapointForLap } from './lapUtils.js';
-import { findDatapointInLapWithInterpolation } from './gpsUtils.js';
+import { addSectorSplitAtTime, removeSectorSplitAtTime } from './sectorUtils.js';
 
 const studio = new Studio();
 
@@ -59,6 +59,10 @@ class RacingDataStudio {
         
         // Reference lap dropdown functions
         (window as any).selectReferenceFromDropdown = (currentSessionId: string, value: string) => this.selectReferenceFromDropdown(currentSessionId, value);
+        
+        // Sector split functions
+        (window as any).addSectorSplitAtCurrentTime = (sessionId: string) => this.addSectorSplitAtCurrentTime(sessionId);
+        (window as any).removeSectorSplitAtCurrentTime = (sessionId: string) => this.removeSectorSplitAtCurrentTime(sessionId);
     }
 
     setupTimeSync(): void {
@@ -884,6 +888,94 @@ class RacingDataStudio {
         const newTime = Math.min(Math.max(0, currentTime + deltaSeconds), session.duration);
         
         this.updateAllUIToTime(newTime, 'ui', this.activeSessionId);
+    }
+
+    addSectorSplitAtCurrentTime(sessionId: string): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        const currentTime = studio.currentTimes.get(sessionId);
+        if (currentTime === undefined) return;
+        
+        const newSectorSplits = addSectorSplitAtTime(currentTime, session, studio.track);
+
+        // Set new splits and recalculate sector times
+        studio.setTrackSectorSplits(newSectorSplits);
+
+        // Refresh all UI components affected by sector split changes
+        this.refreshUIAfterSectorSplitChange();
+    }
+
+    removeSectorSplitAtCurrentTime(sessionId: string): void {
+        const session = studio.sessions.get(sessionId);
+        if (!session) return;
+
+        const currentTime = studio.currentTimes.get(sessionId);
+        if (currentTime === undefined) return;
+
+        const newSectorSplits = removeSectorSplitAtTime(currentTime, session, studio.track);
+
+        // Set new splits and recalculate sector times
+        studio.setTrackSectorSplits(newSectorSplits);
+
+        // Refresh all UI components affected by sector split changes
+        this.refreshUIAfterSectorSplitChange();
+    }
+
+    refreshUIAfterSectorSplitChange(): void {
+        // Refresh all session tabs since sector splits affect all sessions
+        this.sessionTabs.forEach(sessionTab => {
+            // Regenerate lap table with new sector columns
+            this.refreshLapTable(sessionTab);
+            
+            // Regenerate navigation table with new sector headers
+            this.refreshNavigationTable(sessionTab);
+        });
+
+        // Update all graphs to show new sector split annotations
+        this.graphManager.updateAllGraphs();
+
+        this.refreshAllReferenceDropdowns();
+    }
+
+    refreshLapTable(sessionTab: SessionTab): void {
+        const sessionContent = document.getElementById(`content_${sessionTab.id}`);
+        if (!sessionContent) return;
+
+        // Find the lap table and replace it
+        const lapTable = sessionContent.querySelector('.lap-table');
+        if (lapTable) {
+            // Generate new lap table HTML
+            const newLapTableHTML = this.generateLapTable(sessionTab.session);
+            
+            // Create a temporary container to parse the HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = newLapTableHTML;
+            
+            // Extract just the lap table from the generated HTML
+            const newLapTable = tempDiv.querySelector('.lap-table');
+            if (newLapTable) {
+                lapTable.replaceWith(newLapTable);
+            }
+        }
+    }
+
+    refreshNavigationTable(sessionTab: SessionTab): void {
+        const navigationPanel = document.querySelector(`#video-panel-${sessionTab.id} .navigation-panel`);
+        if (!navigationPanel) return;
+
+        // Generate new navigation table HTML
+        const newNavigationHTML = this.generateNavigationTable(sessionTab.session);
+        
+        // Create a temporary container to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newNavigationHTML;
+        
+        // Extract the navigation panel content
+        const newNavigationPanel = tempDiv.querySelector('.navigation-panel');
+        if (newNavigationPanel) {
+            navigationPanel.replaceWith(newNavigationPanel);
+        }
     }
 }
 

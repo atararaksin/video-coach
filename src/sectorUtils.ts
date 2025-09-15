@@ -1,8 +1,11 @@
-import { Datapoint, LapData, Track } from "./types.js";
+import { createPerpendicularLine } from "./gpsUtils.js";
+import { getTimeToDistanceIndexIdxForLap } from "./lapUtils.js";
+import { getLapAtTimeForSession } from "./sessionUtils.js";
+import { Datapoint, LapData, SectorSplit, Session, Track } from "./types.js";
 
 export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track): number[] {
-    return track.sectorSplits.map(dpIdx => {
-        const dp = datapoints[dpIdx];
+    return track.sectorSplits.map(split => {
+        const dp = datapoints[split.datapointIndex];
         if (dp == null) return null;
         else return dp.time;
     });
@@ -27,10 +30,64 @@ export function calculateSectorTimes(sectorSplitTimes: number[], lap: LapData): 
     return sectorTimes;
 }
 
+export function addSectorSplitAtTime(time: number, session: Session, track: Track): SectorSplit[] {
+    const currentLap = getLapAtTimeForSession(session, time);
+
+    const dpIndex = getTimeToDistanceIndexIdxForLap(currentLap, time);
+
+    const sectorSplits = [...track.sectorSplits];
+
+    if (dpIndex == -1) {
+        alert("The current position in the current lap seems to be an outlier compared to the best lap. Cannot put a sector pslit here.");
+        return sectorSplits;
+    }
+
+
+    if (track.sectorSplits.find(s => s.datapointIndex == dpIndex)) return sectorSplits; // Already exists
+
+    const border = createPerpendicularLine(dpIndex, track.referenceLap.datapoints);
+
+    // Find where this split should be inserted among other sector splits
+    let splitIndex = 0;
+    while (splitIndex < sectorSplits.length && sectorSplits[splitIndex].datapointIndex < dpIndex) {
+        splitIndex++;
+    }
+
+    sectorSplits.splice(splitIndex, 0, {
+        datapointIndex: dpIndex,
+        border: border
+    });
+
+    return sectorSplits;
+}
+
+export function removeSectorSplitAtTime(time: number, session: Session, track: Track): SectorSplit[] {
+    const tolerance = 0.5; // seconds
+
+    const currentLap = getLapAtTimeForSession(session, time);
+
+    const sectorSplits = [...track.sectorSplits];
+
+    if (currentLap.sectorSplitTimes.length == 0) return sectorSplits;
+    
+    const closestSectorSplitTimes = currentLap.sectorSplitTimes
+        .filter(t => t)
+        .filter(t => Math.abs(t - time) <= tolerance)
+        .sort(t => Math.abs(t - time));
+    if (closestSectorSplitTimes.length == 0) return sectorSplits;
+    const closestSectorSplitTime = closestSectorSplitTimes[0];
+
+    const closestSplitIndex = currentLap.sectorSplitTimes.findIndex(t => t == closestSectorSplitTime);
+
+    sectorSplits.splice(closestSplitIndex, 1);
+
+    return sectorSplits;
+}
+
 // First point in the array is start of the lap
-export function generateSectorSplits(datapoints: Datapoint[]): number[] {
+export function generateSectorSplits(datapoints: Datapoint[]): SectorSplit[] {
     if (datapoints.length < 2) {
-        return [0];
+        return [];
     }
 
     // Step 1: Find deceleration periods
@@ -72,7 +129,10 @@ export function generateSectorSplits(datapoints: Datapoint[]): number[] {
 
     console.log("Sector split points:", finalSplitPoints);
 
-    return finalSplitPoints;
+    return finalSplitPoints.map(dpIdx => { return {
+        datapointIndex: dpIdx,
+        border: createPerpendicularLine(dpIdx, datapoints)
+    };});
 }
 
 interface Period {
