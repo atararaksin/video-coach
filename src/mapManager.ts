@@ -1,4 +1,5 @@
 import { getDatapointForLap } from './lapUtils.js';
+import { generateStartFinishBorder } from './sectorUtils.js';
 import { getLapAtTimeForSession } from './sessionUtils.js';
 import { Studio } from './studio.js';
 import { LapData } from './types.js';
@@ -216,11 +217,11 @@ export class MapManager {
 
     updateCurrentLap(sessionId: string, lap: LapData): void {
         this.updateLapPath(sessionId, lap, [33, 150, 243], false); // Blue for current lap
-        this.updateSectorBorders(sessionId);
+        this.updateSectorBorders(sessionId, lap);
         this.currentLaps.set(sessionId, lap);
     }
 
-    updateSectorBorders(sessionId: string): void {
+    updateSectorBorders(sessionId: string, lap: LapData): void {
         const sectorBorderLayer = this.sectorBorderGraphics.get(sessionId);
         
         if (!sectorBorderLayer) {
@@ -245,7 +246,8 @@ export class MapManager {
 
             // Create graphics for each sector split border and start/finish line
             const sectorSplitBorders = track.sectorSplits.map(s => s.border);
-            [track.startFinishBorder, ...sectorSplitBorders].forEach((border, index) => {
+            const startFinishBorder = generateStartFinishBorder(lap.rawDatapoints);
+            [startFinishBorder, ...sectorSplitBorders].forEach((border, index) => {
                 // Create polyline from border line segment
                 const polyline = new Polyline({
                     paths: [[
@@ -315,7 +317,8 @@ export class MapManager {
     updateAllMapsForSectorChange(): void {
         // Update sector borders on all maps
         for (const sessionId of this.maps.keys()) {
-            this.updateSectorBorders(sessionId);
+            const lap = this.currentLaps.get(sessionId);
+            this.updateSectorBorders(sessionId, lap);
         }
     }
 }

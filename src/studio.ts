@@ -25,8 +25,7 @@ export class Studio {
         if (!this.track) {
             this.track = {
                 referenceLap: referenceLap,
-                sectorSplits: [],
-                startFinishBorder: generateStartFinishBorder(referenceLap.datapoints)
+                sectorSplits: []
             };
         }
 
