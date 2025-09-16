@@ -14,7 +14,8 @@ export class MapManager {
     private maps: Map<string, any> = new Map(); // sessionId -> map instance
     private lapGraphics: Map<string, any> = new Map(); // sessionId -> graphics layer for lap paths
     private currentPositionGraphics: Map<string, any> = new Map(); // sessionId -> current position graphic
-     private currentLaps: Map<string, LapData> = new Map(); // sessionId -> current lap
+    private sectorBorderGraphics: Map<string, any> = new Map(); // sessionId -> graphics layer for sector borders
+    private currentLaps: Map<string, LapData> = new Map(); // sessionId -> current lap
 
     constructor(studio: Studio) {
         this.studio = studio;
@@ -56,13 +57,17 @@ export class MapManager {
                     const currentPositionLayer = new GraphicsLayer({
                         title: "Current Position"
                     });
+                    const sectorBorderLayer = new GraphicsLayer({
+                        title: "Sector Borders"
+                    });
 
-                    map.addMany([lapLayer, currentPositionLayer]);
+                    map.addMany([lapLayer, currentPositionLayer, sectorBorderLayer]);
 
                     // Store references
                     this.maps.set(sessionId, view);
                     this.lapGraphics.set(sessionId, lapLayer);
                     this.currentPositionGraphics.set(sessionId, currentPositionLayer);
+                    this.sectorBorderGraphics.set(sessionId, sectorBorderLayer);
 
                     view.when(() => {
                         resolve();
@@ -211,7 +216,65 @@ export class MapManager {
 
     updateCurrentLap(sessionId: string, lap: LapData): void {
         this.updateLapPath(sessionId, lap, [33, 150, 243], false); // Blue for current lap
+        this.updateSectorBorders(sessionId);
         this.currentLaps.set(sessionId, lap);
+    }
+
+    updateSectorBorders(sessionId: string): void {
+        const sectorBorderLayer = this.sectorBorderGraphics.get(sessionId);
+        
+        if (!sectorBorderLayer) {
+            return;
+        }
+
+        // Get track data from studio
+        const track = this.studio.track;
+        if (!track || !track.sectorSplits || track.sectorSplits.length === 0) {
+            // Clear existing sector borders if no track data
+            sectorBorderLayer.removeAll();
+            return;
+        }
+
+        window.require([
+            "esri/Graphic",
+            "esri/geometry/Polyline",
+            "esri/symbols/SimpleLineSymbol"
+        ], (Graphic: any, Polyline: any, SimpleLineSymbol: any) => {
+            // Clear existing sector border graphics
+            sectorBorderLayer.removeAll();
+
+            // Create graphics for each sector split border and start/finish line
+            const sectorSplitBorders = track.sectorSplits.map(s => s.border);
+            [track.startFinishBorder, ...sectorSplitBorders].forEach((border, index) => {
+                // Create polyline from border line segment
+                const polyline = new Polyline({
+                    paths: [[
+                        [border.startLon, border.startLat],
+                        [border.endLon, border.endLat]
+                    ]],
+                    spatialReference: { wkid: 4326 }
+                });
+
+                // Create line symbol for sector border
+                const lineSymbol = new SimpleLineSymbol({
+                    color: index == 0 ? [255, 0, 0, 0.8] : [255, 255, 0, 0.8], // Red for start/finish, yellow for splits
+                    width: 2,
+                    style: "solid"
+                });
+
+                const borderGraphic = new Graphic({
+                    geometry: polyline,
+                    symbol: lineSymbol,
+                    attributes: {
+                        sessionId: sessionId,
+                        type: "sector-border",
+                        sectorIndex: index - 1 // start/finish line is -1
+                    }
+                });
+
+                sectorBorderLayer.add(borderGraphic);
+            });
+        });
     }
 
     updateReferenceLap(sessionId: string): void {
@@ -239,12 +302,20 @@ export class MapManager {
         this.maps.delete(sessionId);
         this.lapGraphics.delete(sessionId);
         this.currentPositionGraphics.delete(sessionId);
+        this.sectorBorderGraphics.delete(sessionId);
     }
 
     updateAllMapsForReferenceChange(): void {
         // Update reference lap on all maps
         for (const sessionId of this.maps.keys()) {
             this.updateReferenceLap(sessionId);
+        }
+    }
+
+    updateAllMapsForSectorChange(): void {
+        // Update sector borders on all maps
+        for (const sessionId of this.maps.keys()) {
+            this.updateSectorBorders(sessionId);
         }
     }
 }

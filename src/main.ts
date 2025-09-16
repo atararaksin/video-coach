@@ -63,6 +63,7 @@ class RacingDataStudio {
         // Sector split functions
         (window as any).addSectorSplitAtCurrentTime = (sessionId: string) => this.addSectorSplitAtCurrentTime(sessionId);
         (window as any).removeSectorSplitAtCurrentTime = (sessionId: string) => this.removeSectorSplitAtCurrentTime(sessionId);
+        (window as any).clearSectorSplits = (sessionId: string) => this.clearSectorSplits();
     }
 
     setupTimeSync(): void {
@@ -922,6 +923,14 @@ class RacingDataStudio {
         this.refreshUIAfterSectorSplitChange();
     }
 
+    clearSectorSplits(): void {
+        // Set new splits and recalculate sector times
+        studio.setTrackSectorSplits([]);
+
+        // Refresh all UI components affected by sector split changes
+        this.refreshUIAfterSectorSplitChange();
+    }
+
     refreshUIAfterSectorSplitChange(): void {
         // Refresh all session tabs since sector splits affect all sessions
         this.sessionTabs.forEach(sessionTab => {
@@ -932,8 +941,9 @@ class RacingDataStudio {
             this.refreshNavigationTable(sessionTab);
         });
 
-        // Update all graphs to show new sector split annotations
+        // Update all graphs and maps to show new sector split annotations
         this.graphManager.updateAllGraphs();
+        this.mapManager.updateAllMapsForSectorChange();
 
         this.refreshAllReferenceDropdowns();
     }

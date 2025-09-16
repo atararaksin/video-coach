@@ -1,7 +1,7 @@
 import { createPerpendicularLine } from "./gpsUtils.js";
 import { getTimeToDistanceIndexIdxForLap } from "./lapUtils.js";
 import { getLapAtTimeForSession } from "./sessionUtils.js";
-import { Datapoint, LapData, SectorSplit, Session, Track } from "./types.js";
+import { Datapoint, LapData, LineSegment, SectorSplit, Session, Track } from "./types.js";
 
 export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track): number[] {
     return track.sectorSplits.map(split => {
@@ -17,7 +17,8 @@ export function calculateSectorTimes(sectorSplitTimes: number[], lap: LapData): 
     let sectorStartTime = null;
     if (lap.datapoints[0] != null) sectorStartTime = lap.lapStartTime;
 
-    const sectorEndTimes = sectorSplitTimes.concat(lap.lapStartTime + lap.lapTime);
+    const lastSectorEndTime = lap.datapoints[lap.datapoints.length - 1] != null ? lap.lapStartTime + lap.lapTime : null;
+    const sectorEndTimes = sectorSplitTimes.concat(lastSectorEndTime);
     for (let sectorEndTime of sectorEndTimes) {
         if (sectorStartTime != null && sectorEndTime != null) {
             sectorTimes.push(sectorEndTime - sectorStartTime);
@@ -84,6 +85,10 @@ export function removeSectorSplitAtTime(time: number, session: Session, track: T
     return sectorSplits;
 }
 
+export function generateStartFinishBorder(datapoints: Datapoint[]): LineSegment {
+    return createPerpendicularLine(0, datapoints);
+}
+
 // First point in the array is start of the lap
 export function generateSectorSplits(datapoints: Datapoint[]): SectorSplit[] {
     if (datapoints.length < 2) {
@@ -103,7 +108,7 @@ export function generateSectorSplits(datapoints: Datapoint[]): SectorSplit[] {
     
     for (const period of nonDecelerationPeriods) {
         const duration = datapoints[period.end].time - datapoints[period.start].time;
-        if (duration >= 2.0) {
+        if (duration >= 2.5) {
             // Find the next deceleration period to apply 0.3s margin
             const nextDecelerationStart = findNextDecelerationStart(datapoints, period.end, decelerationPeriods);
             let splitTime = datapoints[period.end].time;

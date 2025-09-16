@@ -1,5 +1,5 @@
 import { calculateBestTheoreticalLap, reindexLap } from "./lapUtils.js";
-import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits } from "./sectorUtils.js";
+import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits, generateStartFinishBorder } from "./sectorUtils.js";
 import { Session, Track, LapData, SectorSplit } from "./types";
 
 export class Studio {
@@ -25,7 +25,8 @@ export class Studio {
         if (!this.track) {
             this.track = {
                 referenceLap: referenceLap,
-                sectorSplits: []
+                sectorSplits: [],
+                startFinishBorder: generateStartFinishBorder(referenceLap.datapoints)
             };
         }
 

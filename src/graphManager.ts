@@ -51,6 +51,7 @@ export class GraphManager {
                     </div>
                     <button class="add-sector-split-btn" onclick="addSectorSplitAtCurrentTime('${sessionId}')" title="Add sector split at current time">+ Split</button>
                     <button class="remove-sector-split-btn" onclick="removeSectorSplitAtCurrentTime('${sessionId}')" title="Remove sector split near current time">- Split</button>
+                    <button class="remove-sector-split-btn" onclick="clearSectorSplits()" title="Clear sector splits">Clear splits</button>
                     <button class="remove-graph-btn" onclick="removeGraph('${graphId}')">×</button>
                 </div>
             </div>

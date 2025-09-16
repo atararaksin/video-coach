@@ -153,7 +153,7 @@ export function createPerpendicularLine(dpIndex: number, datapoints: Datapoint[]
         };
         
         // Scale the perpendicular vector to desired length (small finite line)
-        const lineLength = 0.00006; // Approximately 6m in degrees
+        const lineLength = 0.00007; // Approximately 7m in degrees
         const perpLat = perpVector.lat * lineLength;
         const perpLon = perpVector.lon * lineLength / cosLat; // Undo cosine correction for final coordinates
         
