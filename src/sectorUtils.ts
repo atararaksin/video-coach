@@ -1,4 +1,4 @@
-import { createPerpendicularLine } from "./gpsUtils.js";
+import { createPerpendicularLine, findDatapointIndexAtBorderCrossing } from "./gpsUtils.js";
 import { getTimeToDistanceIndexIdxForLap } from "./lapUtils.js";
 import { getLapAtTimeForSession } from "./sessionUtils.js";
 import { Datapoint, LapData, LineSegment, SectorSplit, Session, Track } from "./types.js";
@@ -87,6 +87,15 @@ export function removeSectorSplitAtTime(time: number, session: Session, track: T
 
 export function generateStartFinishBorder(datapoints: Datapoint[]): LineSegment {
     return createPerpendicularLine(0, datapoints);
+}
+
+export function loadSectorSplitsFromSplitBorders(datapoints: Datapoint[], sectorSplitBorders: LineSegment[]): SectorSplit[] {
+    return sectorSplitBorders
+        .map(border => { return {
+            datapointIndex: findDatapointIndexAtBorderCrossing(datapoints, border),
+            border: border
+        };})
+        .filter(s => s.datapointIndex != null);
 }
 
 // First point in the array is start of the lap

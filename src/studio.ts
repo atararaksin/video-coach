@@ -1,5 +1,6 @@
-import { calculateBestTheoreticalLap, reindexLap } from "./lapUtils.js";
-import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits, generateStartFinishBorder } from "./sectorUtils.js";
+import { calculateBestTheoreticalLap, calculateLapCenter, reindexLap } from "./lapUtils.js";
+import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits, generateStartFinishBorder, loadSectorSplitsFromSplitBorders } from "./sectorUtils.js";
+import { getTrackConfig, saveTrackConfig } from "./trackConfig.js";
 import { Session, Track, LapData, SectorSplit } from "./types";
 
 export class Studio {
@@ -29,7 +30,16 @@ export class Studio {
             };
         }
 
-        this.setTrackSectorSplits(generateSectorSplits(referenceLap.datapoints));
+        const lapCenter = calculateLapCenter(this.track.referenceLap);
+        const trackConfig = getTrackConfig(lapCenter);
+        
+        if (trackConfig) {
+            const sectorSplits = loadSectorSplitsFromSplitBorders(referenceLap.datapoints, trackConfig.sectorSplitBorders);
+            this.setTrackSectorSplits(sectorSplits);
+        } else {
+            const sectorSplits = generateSectorSplits(referenceLap.datapoints);
+            this.setTrackSectorSplits(sectorSplits);
+        }
     }
 
     removeSession(sessionId: string) {
@@ -71,5 +81,11 @@ export class Studio {
             session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
             console.log("Best theoretical lap", session.bestTheoreticalLap);
         }
+
+        const lapCenter = calculateLapCenter(this.track.referenceLap);
+        saveTrackConfig({
+            lapCenter: lapCenter,
+            sectorSplitBorders: sectorSplits.map(s => s.border)
+        });
     }
 }

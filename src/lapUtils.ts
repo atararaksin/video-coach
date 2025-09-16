@@ -203,7 +203,7 @@ export function correctLatLonOffset(laps: LapData[], referenceLap: LapData) {
     }
 }
 
-function calculateLapCenter(lap: LapData): Point {
+export function calculateLapCenter(lap: LapData): Point {
     let latSum = 0;
     let lonSum = 0;
 

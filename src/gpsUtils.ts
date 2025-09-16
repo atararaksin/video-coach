@@ -212,50 +212,30 @@ export function createPerpendicularLine(dpIndex: number, datapoints: Datapoint[]
             }
         }
         
-        // Fallback: if no intersection found, use the closest point method
-        /*console.log('No intersection found, using closest point method');
-        let closestPoint = datapoints[0];
-        let minDistance = distanceToLineSegment(closestPoint, border);;
-        for (let i = 0; i < datapoints.length; i++) {
-            const point = datapoints[i];
-            const distance = distanceToLineSegment(point, border);
-            
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestPoint = point;
-            }
-        }
-        
-        return closestPoint;*/
         return null;
     }
 
-    // Calculate distance from point to finite line segment (not infinite line)
-    function distanceToLineSegment(point, border: LineSegment): number {
-        const x = point.lon;
-        const y = point.lat;
-        const x1 = border.startLon;
-        const y1 = border.startLat;
-        const x2 = border.endLon;
-        const y2 = border.endLat;
-        
-        // Calculate the squared length of the line segment
-        const segmentLengthSquared = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
-        
-        // If the segment has zero length, return distance to the point
-        if (segmentLengthSquared === 0) {
-            return Math.sqrt((x - x1) * (x - x1) + (y - y1) * (y - y1));
+    export function findDatapointIndexAtBorderCrossing(datapoints: Datapoint[], border: LineSegment): number {
+        // Look for actual intersection between consecutive trajectory segments and the border line
+        for (let i = 0; i < datapoints.length - 1; i++) {
+            const point1 = datapoints[i];
+            const point2 = datapoints[i + 1];
+            
+            // Check if trajectory segment intersects with border line segment
+            const intersection = lineSegmentIntersection(
+                point1.lon, point1.lat,
+                point2.lon, point2.lat,
+                border.startLon, border.startLat,
+                border.endLon, border.endLat
+            );
+            
+            if (intersection && intersection.t !== undefined) {
+                // TODO return the closest point (point1 or point2)
+                return i;
+            }
         }
-        
-        // Calculate the parameter t that represents the projection of the point onto the line segment
-        const t = Math.max(0, Math.min(1, ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / segmentLengthSquared));
-        
-        // Calculate the closest point on the line segment
-        const closestX = x1 + t * (x2 - x1);
-        const closestY = y1 + t * (y2 - y1);
-        
-        // Return the distance from the point to the closest point on the segment
-        return Math.sqrt((x - closestX) * (x - closestX) + (y - closestY) * (y - closestY));
+
+        return null;
     }
 
     // Helper method to find intersection between two line segments
