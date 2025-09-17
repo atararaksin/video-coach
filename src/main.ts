@@ -119,7 +119,12 @@ class RacingDataStudio {
             
             // Refresh reference lap dropdowns in all other sessions
             this.refreshAllReferenceDropdowns();
-            
+
+            // Refresh all session tabs since total-best times might have changed
+            this.sessionTabs.forEach(sessionTab => {
+                this.refreshLapTable(sessionTab);
+                this.refreshNavigationTable(sessionTab);
+            });
         } catch (error) {
             console.error('Error parsing CSV:', error);
             alert('Error parsing CSV file: ' + (error as Error).message);
@@ -198,15 +203,27 @@ class RacingDataStudio {
                 ? Math.max(...lap.rawDatapoints.map(point => point.data.get("GPS Speed") || 0))
                 : 0;
 
-            const sectorCells = lap.sectorTimes.map(time => 
-                `<td class="sector-time">${this.formatTime(time)}</td>`
+            // Generate sector cells with color styling based on ranking
+            const sectorCells = lap.sectors.map(s => {
+                const sectorTime = s ? s.sectorTime : null;
+                const ranking = s ? s.ranking : "bad";
+                const colorStyle = this.getRankingColorStyle(ranking);
+                return `<td class="sector-time" style="${colorStyle}">${this.formatTime(sectorTime)}</td>`;
+            }).join('');
+
+            // Add null sector cells if there are fewer sectors than expected
+            const missingSectorCells = Array.from({length: sectorCount - lap.sectors.length}, () => 
+                `<td class="sector-time" style="background-color: #ffcdd2; color: #d32f2f;">--</td>`
             ).join('');
+
+            // Apply color styling to lap time based on lap ranking
+            const lapTimeColorStyle = this.getRankingColorStyle(lap.ranking);
 
             return `
                 <tr onclick="selectLap('${session.id}', ${lap.lapIndex})" style="cursor: pointer;">
                     <td>${lap.lapIndex}</td>
-                    <td class="lap-time">${this.formatTime(lap.lapTime)}</td>
-                    ${sectorCells}
+                    <td class="lap-time" style="${lapTimeColorStyle}">${this.formatTime(lap.lapTime)}</td>
+                    ${sectorCells}${missingSectorCells}
                     <td>${maxSpeed.toFixed(1)} km/h</td>
                 </tr>
             `;
@@ -511,6 +528,20 @@ class RacingDataStudio {
         }
     }
 
+    getRankingColorStyle(ranking: string): string {
+        switch (ranking) {
+            case 'total-best':
+                return 'background-color: #e1bee7; color: #7b1fa2;'; // Purple
+            case 'session-best':
+                return 'background-color: #c8e6c9; color: #2e7d32;'; // Green
+            case 'bad':
+                return 'background-color: #ffcdd2; color: #d32f2f;'; // Red
+            case 'normal':
+            default:
+                return ''; // Keep as is (no additional styling)
+        }
+    }
+
     formatTime(seconds: number): string {
         if (seconds == null) return "--";
 
@@ -590,6 +621,12 @@ class RacingDataStudio {
         
         // Update all graphs in case the reference lap was removed
         this.graphManager.updateAllGraphsForReferenceChange();
+
+        // Refresh all session tabs since total-best times might have changed
+        this.sessionTabs.forEach(sessionTab => {
+            this.refreshLapTable(sessionTab);
+            this.refreshNavigationTable(sessionTab);
+        });
     }
 
     addTelemetryGraph(sessionId: string): void {

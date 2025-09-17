@@ -16,13 +16,21 @@ export interface LapData {
     lapIndex: number;
     lapTime: number;
     lapStartTime: number;
-    sectorTimes: number[]; // Durations
+    sectors: Sector[];
     sectorSplitTimes: number[];
     timeToDistanceIndex: TimeToDistanceIndex[];
     rawTimeToDistanceIndex: TimeToDistanceIndex[];
     rawDatapoints: Datapoint[];
     datapoints: Datapoint[];
     isComplete: boolean;
+    ranking: string; // total-best, session-best, normal, bad
+}
+
+export interface Sector {
+    sectorTime: number;
+    sectorStartTime: number;
+    sectorIndex: number;
+    ranking: string; // total-best, session-best, normal, bad
 }
 
 export interface TelemetryHeader {

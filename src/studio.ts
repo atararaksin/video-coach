@@ -1,5 +1,5 @@
-import { calculateBestTheoreticalLap, calculateLapCenter, reindexLap } from "./lapUtils.js";
-import { calculateSectorTimes, calculateSectorSplitTimes, generateSectorSplits, generateStartFinishBorder, loadSectorSplitsFromSplitBorders } from "./sectorUtils.js";
+import { calculateBestTheoreticalLap, calculateLapCenter, populateLapRankings, reindexLap } from "./lapUtils.js";
+import { calculateSectors, calculateSectorSplitTimes, generateSectorSplits, loadSectorSplitsFromSplitBorders, populateSectorRankings } from "./sectorUtils.js";
 import { getTrackConfig, saveTrackConfig } from "./trackConfig.js";
 import { Session, Track, LapData, SectorSplit } from "./types";
 
@@ -40,6 +40,8 @@ export class Studio {
             const sectorSplits = generateSectorSplits(referenceLap.datapoints);
             this.setTrackSectorSplits(sectorSplits);
         }
+
+        populateLapRankings([...this.sessions.values()]);
     }
 
     removeSession(sessionId: string) {
@@ -55,6 +57,9 @@ export class Studio {
         
         this.videoSyncOffsets.delete(sessionId);
         this.currentTimes.delete(sessionId);
+
+        populateLapRankings([...this.sessions.values()]);
+        populateSectorRankings([...this.sessions.values()], this.track);
     }
 
     setReferenceLap(lap: LapData, sessionId: string) {
@@ -72,7 +77,7 @@ export class Studio {
             // Add sector times to laps
             for (let lap of session.laps) {
                 lap.sectorSplitTimes = calculateSectorSplitTimes(lap.datapoints, this.track);
-                lap.sectorTimes = calculateSectorTimes(lap.sectorSplitTimes, lap);
+                lap.sectors = calculateSectors(lap.sectorSplitTimes, lap);
             }
 
             console.log("SESSION:", session);
@@ -81,6 +86,8 @@ export class Studio {
             session.bestTheoreticalLap = calculateBestTheoreticalLap(session, this.track.referenceLap);
             console.log("Best theoretical lap", session.bestTheoreticalLap);
         }
+
+        populateSectorRankings([...this.sessions.values()], this.track);
 
         const lapCenter = calculateLapCenter(this.track.referenceLap);
         saveTrackConfig({

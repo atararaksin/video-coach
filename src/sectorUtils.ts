@@ -1,7 +1,7 @@
 import { createPerpendicularLine, findDatapointIndexAtBorderCrossing } from "./gpsUtils.js";
 import { getTimeToDistanceIndexIdxForLap } from "./lapUtils.js";
 import { getLapAtTimeForSession } from "./sessionUtils.js";
-import { Datapoint, LapData, LineSegment, SectorSplit, Session, Track } from "./types.js";
+import { Datapoint, LapData, LineSegment, Sector, SectorSplit, Session, Track } from "./types.js";
 
 export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track): number[] {
     return track.sectorSplits.map(split => {
@@ -11,8 +11,8 @@ export function calculateSectorSplitTimes(datapoints: Datapoint[], track: Track)
     });
 }
 
-export function calculateSectorTimes(sectorSplitTimes: number[], lap: LapData): number[] {
-    const sectorTimes = [];
+export function calculateSectors(sectorSplitTimes: number[], lap: LapData): Sector[] {
+    const sectors: Sector[] = [];
 
     let sectorStartTime = null;
     if (lap.datapoints[0] != null) sectorStartTime = lap.lapStartTime;
@@ -21,14 +21,51 @@ export function calculateSectorTimes(sectorSplitTimes: number[], lap: LapData): 
     const sectorEndTimes = sectorSplitTimes.concat(lastSectorEndTime);
     for (let sectorEndTime of sectorEndTimes) {
         if (sectorStartTime != null && sectorEndTime != null) {
-            sectorTimes.push(sectorEndTime - sectorStartTime);
+            sectors.push({
+                sectorIndex: sectors.length,
+                sectorStartTime: sectorStartTime,
+                sectorTime: sectorEndTime - sectorStartTime,
+                ranking: "normal"
+            });
         } else {
-            sectorTimes.push(null);
+            sectors.push(null);
         }
         sectorStartTime = sectorEndTime;
     }
     
-    return sectorTimes;
+    return sectors;
+}
+
+export function populateSectorRankings(sessions: Session[], track: Track) {
+    for (let sectorIndex = 0; sectorIndex < track.sectorSplits.length + 1; sectorIndex++) {
+        let totalBest = Number.MAX_VALUE;
+        for (let session of sessions) {
+            const sortedSectors = session.laps
+                .map(lap => lap.sectors[sectorIndex])
+                .filter(s => s != null)
+                .sort((a, b) => a.sectorTime - b.sectorTime);
+
+            if (sortedSectors.length > 0) {
+                const sessionBest = sortedSectors[0].sectorTime;
+
+                for (let sector of sortedSectors) {
+                    if (sector.sectorTime == sessionBest) sector.ranking = "session-best";
+                    else if (sector.sectorTime > sessionBest * 1.01) sector.ranking = "bad";
+                    else sector.ranking = "normal";
+                }
+                
+                if (sessionBest < totalBest) totalBest = sessionBest;
+            }
+        }
+
+        for (let session of sessions) {
+            for (let lap of session.laps) {
+                if (lap.sectors[sectorIndex] && lap.sectors[sectorIndex].sectorTime == totalBest) {
+                    lap.sectors[sectorIndex].ranking = "total-best";
+                }
+            }
+        }
+    }
 }
 
 export function addSectorSplitAtTime(time: number, session: Session, track: Track): SectorSplit[] {

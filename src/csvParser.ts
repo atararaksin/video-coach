@@ -140,9 +140,10 @@ export class TelemetryCSVParser {
                 datapoints: [],
                 timeToDistanceIndex: [],
                 rawTimeToDistanceIndex: datapoints.map((dp, i) => {return {time: dp.time, distanceBasedIndex: i}}),
-                sectorTimes: [],
+                sectors: [],
                 sectorSplitTimes: [],
-                isComplete: true
+                isComplete: true,
+                ranking: "normal"
             };
             console.log('No beacon markers, single lap with', lapData.datapoints.length, 'data points');
             return [lapData];
@@ -173,9 +174,10 @@ export class TelemetryCSVParser {
                 datapoints: [],
                 timeToDistanceIndex: [],
                 rawTimeToDistanceIndex: lapDatapoints.map((dp, i) => {return {time: dp.time, distanceBasedIndex: i}}),
-                sectorTimes: [],
+                sectors: [],
                 sectorSplitTimes: [],
-                isComplete: true
+                isComplete: true,
+                ranking: "normal"
             };
             
             laps.push(lapData);
@@ -195,9 +197,10 @@ export class TelemetryCSVParser {
                 datapoints: [],
                 timeToDistanceIndex: [],
                 rawTimeToDistanceIndex: remainingData.map((dp, i) => {return {time: dp.time, distanceBasedIndex: i}}),
-                sectorTimes: [],
+                sectors: [],
                 sectorSplitTimes: [],
-                isComplete: true
+                isComplete: true,
+                ranking: "normal"
             };
             console.log(`Final lap: ${previousTime}s to end, ${remainingData.length} data points`);
             laps.push(finalLap);
