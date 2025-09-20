@@ -37,6 +37,8 @@ export function calculateSectors(sectorSplitTimes: number[], lap: LapData): Sect
 }
 
 export function populateSectorRankings(sessions: Session[], track: Track) {
+    const rollingWindow = 1;
+    
     for (let sectorIndex = 0; sectorIndex < track.sectorSplits.length + 1; sectorIndex++) {
         let totalBest = Number.MAX_VALUE;
         for (let session of sessions) {
@@ -48,9 +50,24 @@ export function populateSectorRankings(sessions: Session[], track: Track) {
             if (sortedSectors.length > 0) {
                 const sessionBest = sortedSectors[0].sectorTime;
 
-                for (let sector of sortedSectors) {
+                for (let lapIdx = 0; lapIdx < session.laps.length; lapIdx++) {
+                    const sector = session.laps[lapIdx].sectors[sectorIndex];
+                    if (sector == null) continue;
+
+                    let rollingBest = 1000000; // Don't use Number.MAX_VALUE - will overflow
+                    if (lapIdx > 0) {
+                        const rollingSectors = session.laps
+                            .slice(Math.max(0, lapIdx - rollingWindow), lapIdx)
+                            .map(lap => lap.sectors[sectorIndex])
+                            .filter(s => s != null)
+                            .sort((a, b) => a.sectorTime - b.sectorTime);
+                        if (sortedSectors.length > 0) {
+                            if (rollingSectors.length > 0) rollingBest = rollingSectors[0].sectorTime;
+                        }
+                    }
+
                     if (sector.sectorTime == sessionBest) sector.ranking = "session-best";
-                    else if (sector.sectorTime > sessionBest * 1.01) sector.ranking = "bad";
+                    else if (sector.sectorTime > rollingBest * 1.015) sector.ranking = "bad";
                     else sector.ranking = "normal";
                 }
                 

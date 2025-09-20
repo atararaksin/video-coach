@@ -182,6 +182,7 @@ export function calculateBestTheoreticalLap(session: Session, referenceLap: LapD
 }
 
 export function populateLapRankings(sessions: Session[]) {
+    const rollingWindow = 1;
     let totalBest = Number.MAX_VALUE;
     for (let session of sessions) {
         const sortedCompleteLaps = session.laps
@@ -192,9 +193,20 @@ export function populateLapRankings(sessions: Session[]) {
             const sessionBest = sortedCompleteLaps[0].lapTime;
 
             for (let lap of session.laps) {
+                let rollingBest = 1000000; // Don't use Number.MAX_VALUE - will overflow
+                if (lap.lapIndex > 0) {
+                    const rollingLaps = session.laps
+                        .slice(Math.max(0, lap.lapIndex - rollingWindow), lap.lapIndex)
+                        .filter(l => l.isComplete)
+                        .sort((a, b) => a.lapTime - b.lapTime);
+                    if (rollingLaps.length > 0) {
+                        if (rollingLaps.length > 0) rollingBest = rollingLaps[0].lapTime;
+                    }
+                }
+
                 if (!lap.isComplete) lap.ranking = "bad";
-                if (lap.lapTime == sessionBest) lap.ranking = "session-best";
-                else if (lap.lapTime > sessionBest * 1.01) lap.ranking = "bad";
+                else if (lap.lapTime == sessionBest) lap.ranking = "session-best";
+                else if (lap.lapTime > rollingBest * 1.006) lap.ranking = "bad";
                 else lap.ranking = "normal";
             }
             
